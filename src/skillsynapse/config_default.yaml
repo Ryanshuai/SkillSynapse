@@ -1,0 +1,120 @@
+# SkillSynapse default config. Copied to ~/.claude/skillsynapse/config.yaml on
+# first run. See §10 of SkillSynapse-Design-v3.5-final.md for the source of
+# truth; v0.1 only reads a subset, but all keys are present so v0.2 won't need
+# a migration.
+
+cron: "0 2 * * *"
+
+extraction:
+  min_tool_calls: 15
+  min_tool_diversity: 3
+  prompt_version: 5
+  exclude_subagents: true
+
+# Episode detection (v0.2). Splits long sessions into topically coherent
+# slices so the extractor produces multiple focused skill candidates per
+# session instead of a single diluted one. See docs/episode_detection_integration.md.
+episode_detection:
+  enabled: true
+  gap_minutes: 30           # consecutive tool_use ≥N min apart → new episode
+  min_tool_overlap: 0       # 0 disables tool-overlap rule (time-gap only);
+                            # raise to 1+ when timestamps are unreliable
+  window: 5                 # tool_use events per side when computing overlap
+
+pruning:
+  min_selections: 5
+  max_fallback_rate: 0.5
+  min_effective_rate: 0.2
+
+compression:
+  min_effective_rate: 0.8
+  min_applied: 20
+
+split:
+  min_applied: 10
+  diversity_threshold: 0.7
+
+merge:
+  co_selection_threshold: 0.7
+
+probation:
+  min_selections: 5
+
+metrics:
+  window_applied: 10
+  window_correct: 5
+  recent_analyses_window: 5
+  # How many trailing events to inspect when deciding whether a session
+  # "ended cleanly". A mid-session error followed by a successful retry is
+  # normal and should NOT count as a fallback — only errors in the tail matter.
+  completion_tail_window: 5
+
+category:
+  max_count: 15
+  future_ceiling: 30
+  allow_creation: false
+  # Design §10 lists `preset_file: "categories_preset.sql"`. v0.1 seeds the
+  # 15 preset rows from the PRESET_CATEGORIES constant in store.py instead
+  # of reading a .sql file; the field is intentionally omitted here until
+  # v0.2 actually loads it, to avoid carrying a dead config key.
+
+llm:
+  # `provider` + `fallback_provider` are forward-compat placeholders for v0.2.
+  # v0.1 only implements the subprocess path (`subprocess_cmd` below); the
+  # provider field is recorded in decisions audit but not dispatched on.
+  provider: claude_code_sdk
+  model: claude-opus-4-6
+  fallback_provider: null
+  subprocess_cmd: ["claude", "--print"]
+  rate_limit_guard:
+    max_calls_per_run: 200
+    # `defer_on_rate_limit` is always true in v0.1 (the extractor always defers
+    # on RateLimitDeferred). Kept for v0.2 where we'll support per-provider
+    # fallback instead of defer.
+    defer_on_rate_limit: true
+    defer_log_action: "deferred_rate_limit"
+
+orphan_adoption:
+  semantic_match_enabled: false
+  gc_days: 30
+  max_orphans_per_adoption_run: 50
+
+manual_protection:
+  enabled: true
+  bootstrap_on_first_run: true
+  dedup_window_days: 7
+  pending_review_max_age_days: 90
+  block_split_merge_prune: true
+
+session_index:
+  # v0.1: the FTS5 table is created but no session is indexed yet (§5 Step 1.5
+  # deferred to v0.2). Keep `enabled: false` until the indexer lands.
+  enabled: false
+  topic_extraction_enabled: true
+  topic_max_count: 5
+  reindex_on_first_run: false
+  fts_tokenizer: "unicode61"
+
+tool_degradation:
+  enabled: true
+  min_skills_per_tool: 3
+  fallback_rate_threshold: 0.4
+  antiloop_ttl_days: 30
+
+llm_confirm:
+  trigger_2: true
+  prune: true
+
+auto_rollback:
+  enabled: true
+  degradation_threshold: 0.5
+
+environment: "default"
+
+paths:
+  # Claude Code native skill root
+  skills_root: "~/.claude/skills"
+  # SkillSynapse's own data dir (db, logs, config)
+  data_dir: "~/.claude/skillsynapse"
+  # Where to look for Claude Code session .jsonl files
+  projects_root: "~/.claude/projects"
