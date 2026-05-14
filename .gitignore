@@ -1,0 +1,19 @@
+*.pyc
+__pycache__/
+_openspace_ref
+_hermes_ref
+_phase0_dryrun
+docs
+SkillSynapse-Design-v3.5-final.md
+
+# Python packaging / editable install artifacts
+*.egg-info/
+build/
+dist/
+
+# uv / virtualenv
+.venv/
+
+# Claude Code runtime state
+.claude/scheduled_tasks.lock
+
