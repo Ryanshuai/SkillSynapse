@@ -11,7 +11,8 @@ SkillSynapse-Design-v3.5-final.md
 build/
 dist/
 
-# uv / virtualenv
+# pixi / virtualenv
+.pixi/
 .venv/
 
 # Claude Code runtime state
