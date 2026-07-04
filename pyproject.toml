@@ -20,3 +20,15 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 skillsynapse = ["*.sql", "*.yaml"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.dependencies]
+python = ">=3.11"
+pyyaml = ">=6.0"
+
+# 项目自身以 editable 方式装入，保证 skillsynapse / skill 两个命令可用
+[tool.pixi.pypi-dependencies]
+skillsynapse = { path = ".", editable = true }
