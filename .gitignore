@@ -18,3 +18,11 @@ dist/
 # Claude Code runtime state
 .claude/scheduled_tasks.lock
 
+# 安全红线:原始 session 日志/本地库绝不入库(见 CLAUDE.md)
+cc-logs/
+db.sqlite
+decisions.jsonl
+
+# 内网拓扑(机器名/tailnet IP 映射)只存本地
+LOCAL-TOPOLOGY.md
+

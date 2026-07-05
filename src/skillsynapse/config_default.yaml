@@ -116,5 +116,10 @@ paths:
   skills_root: "~/.claude/skills"
   # SkillSynapse's own data dir (db, logs, config)
   data_dir: "~/.claude/skillsynapse"
-  # Where to look for Claude Code session .jsonl files
+  # Where to look for Claude Code session .jsonl files (single-machine mode)
   projects_root: "~/.claude/projects"
+  # Multi-machine aggregation (see deploy/syncthing/ + the aggregation design doc).
+  # When set (e.g. "~/cc-logs" on the hub), each immediate subdirectory is treated
+  # as one machine's projects root, with hostname = subdir name. Sessions from all
+  # machines are scanned in one run. null = single-machine mode (use projects_root).
+  aggregation_root: null
