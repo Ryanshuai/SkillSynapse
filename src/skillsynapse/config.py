@@ -58,6 +58,7 @@ class Paths:
     skills_root: Path
     data_dir: Path
     projects_root: Path
+    aggregation_root: Path | None
     db_path: Path
     decisions_log: Path
     index_md: Path
@@ -69,10 +70,13 @@ def resolve_paths(cfg: Config) -> Paths:
     skills_root = Path(cfg.paths.skills_root).expanduser()
     data_dir = Path(cfg.paths.data_dir).expanduser()
     projects_root = Path(cfg.paths.projects_root).expanduser()
+    agg_raw = cfg.paths.get("aggregation_root")
+    aggregation_root = Path(agg_raw).expanduser() if agg_raw else None
     return Paths(
         skills_root=skills_root,
         data_dir=data_dir,
         projects_root=projects_root,
+        aggregation_root=aggregation_root,
         db_path=data_dir / "db.sqlite",
         decisions_log=data_dir / "logs" / "decisions.jsonl",
         index_md=skills_root / "_index.md",

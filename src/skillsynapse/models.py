@@ -125,6 +125,10 @@ class SessionMeta:
     id: str
     path: str
     project: str
+    # Source machine name in multi-machine aggregation (subdir of aggregation_root).
+    # None in single-machine mode. Carried for audit/grouping; downstream v0.1 does
+    # not gate on it.
+    hostname: Optional[str] = None
     first_event_time: Optional[str] = None
     num_events: int = 0
 

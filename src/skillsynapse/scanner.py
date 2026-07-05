@@ -174,37 +174,61 @@ def _derive_project(path: Path, projects_root: Path) -> str:
 
 
 def find_sessions(
-    projects_root: Path,
+    roots: list[tuple[Optional[str], Path]],
     *,
     modified_after: Optional[datetime] = None,
     exclude_subagents: bool = True,
 ) -> list[SessionMeta]:
-    """Return session handles (no event parsing yet) matching the filters."""
-    if not projects_root.exists():
-        return []
+    """Return session handles (no event parsing yet) matching the filters.
 
+    `roots` is a list of (hostname, projects_root) pairs. Single-machine mode
+    passes one pair with hostname=None; multi-machine aggregation passes one
+    pair per source machine (hostname = the machine's subdir under the hub's
+    aggregation_root). `project` is derived relative to each pair's own root, so
+    the aggregation subdir must be the per-machine root — never the shared
+    aggregation_root itself (that would collapse every project to the hostname).
+    """
     sessions: list[SessionMeta] = []
-    for jsonl in projects_root.rglob("*.jsonl"):
-        if exclude_subagents and "subagents" in jsonl.parts:
+    for hostname, root in roots:
+        if not root.exists():
             continue
-        try:
-            st = jsonl.stat()
-        except OSError:
-            continue
-        if modified_after is not None:
-            mtime = datetime.fromtimestamp(st.st_mtime)
-            if mtime < modified_after:
+        for jsonl in root.rglob("*.jsonl"):
+            if exclude_subagents and "subagents" in jsonl.parts:
                 continue
-        sessions.append(
-            SessionMeta(
-                id=jsonl.stem,
-                path=str(jsonl),
-                project=_derive_project(jsonl, projects_root),
-                first_event_time=None,
-                num_events=0,
+            try:
+                st = jsonl.stat()
+            except OSError:
+                continue
+            if modified_after is not None:
+                mtime = datetime.fromtimestamp(st.st_mtime)
+                if mtime < modified_after:
+                    continue
+            sessions.append(
+                SessionMeta(
+                    id=jsonl.stem,
+                    path=str(jsonl),
+                    project=_derive_project(jsonl, root),
+                    hostname=hostname,
+                    first_event_time=None,
+                    num_events=0,
+                )
             )
-        )
     return sessions
+
+
+def scan_roots(projects_root: Path, aggregation_root: Optional[Path]) -> list[tuple[Optional[str], Path]]:
+    """Resolve config paths into (hostname, root) pairs for find_sessions().
+
+    Hub (aggregation_root set): each immediate subdir is one machine's root,
+    hostname = subdir name. Single-machine: one pair (None, projects_root).
+    """
+    if aggregation_root and aggregation_root.exists():
+        return [
+            (child.name, child)
+            for child in sorted(aggregation_root.iterdir())
+            if child.is_dir() and not child.name.startswith(".")
+        ]
+    return [(None, projects_root)]
 
 
 def yesterday_cutoff(hours_back: int = 24) -> datetime:

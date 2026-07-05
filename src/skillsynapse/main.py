@@ -32,7 +32,7 @@ from .extractor import extract_from_session, log_non_new_action, realize_candida
 from .indexer import render_categories_md, render_index_md, sync_captured_skill_files
 from .llm_provider import LLMProvider, RateLimitDeferred
 from .metrics import collect_metrics
-from .scanner import find_sessions, yesterday_cutoff
+from .scanner import find_sessions, scan_roots, yesterday_cutoff
 from .store import Store
 
 
@@ -71,13 +71,16 @@ def run_pipeline(
 
         # ── Step 1: scan sessions ──────────────────────────
         cutoff = yesterday_cutoff(hours_back)
+        roots = scan_roots(paths.projects_root, paths.aggregation_root)
         sessions = find_sessions(
-            paths.projects_root,
+            roots,
             modified_after=cutoff,
             exclude_subagents=cfg.extraction.exclude_subagents,
         )
-        logger.info("Step 1  found %d sessions modified after %s",
-                    len(sessions), cutoff.isoformat(timespec="seconds"))
+        logger.info("Step 1  found %d sessions modified after %s across %d root(s)%s",
+                    len(sessions), cutoff.isoformat(timespec="seconds"), len(roots),
+                    (" [hosts: " + ",".join(h or "local" for h, _ in roots) + "]"
+                     if paths.aggregation_root else ""))
 
         session_paths = [Path(s.path) for s in sessions]
 
