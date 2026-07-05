@@ -66,6 +66,13 @@ llm:
   model: claude-opus-4-6
   fallback_provider: null
   subprocess_cmd: ["claude", "--print"]
+  # Each `claude --print` extractor run persists a session .jsonl under its
+  # CLAUDE_CONFIG_DIR's projects/ tree. Left on the default (~/.claude), those
+  # runs flood the user's real Claude Code history (the VSCode extension lists
+  # them). Redirect the child to this sidecar dir — the extension never scans
+  # it — while the auth files are symlinked back so OAuth login still works.
+  # Set to null to opt out and write into the caller's history dir.
+  isolated_config_dir: "~/.claude-skillsynapse"
   rate_limit_guard:
     max_calls_per_run: 200
     # `defer_on_rate_limit` is always true in v0.1 (the extractor always defers
