@@ -2,13 +2,15 @@
 
 Intranet-only Syncthing to aggregate every machine's `~/.claude/projects/` onto
 one hub, feeding the nightly knowledge report + SkillSynapse. Design:
-[`../../multi-machine-cc-aggregation-design.md`](../../multi-machine-cc-aggregation-design.md).
+[`../../docs/02-transport-and-security.md`](../../docs/02-transport-and-security.md)
+(overview at [`../../docs/README.md`](../../docs/README.md)).
 
 **Security model = internet isolation, not content scrubbing.** Inside the
 Tailscale mesh raw logs sync freely; the hard rule is data never leaves the
 mesh. Every node is hardened so Syncthing has no public code path: global
 discovery / relay / local broadcast / UPnP / auto-upgrade / telemetry all off,
-listener bound to the tailnet IP, GUI on localhost only. See design §3.2 / §7.
+listener bound to the tailnet IP, GUI on localhost only. See design §2 (security)
+/ §2.1 (isolation config).
 
 Real hostnames and tailnet IPs live in `LOCAL-TOPOLOGY.md` at the repo root —
 that file is gitignored and never enters the repo; docs below use placeholders.
