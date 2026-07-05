@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from .config import Config
@@ -73,6 +74,45 @@ class LLMProvider:
         self.max_calls = int(guard.get("max_calls_per_run", 200))
         self.defer_log_action = guard.get("defer_log_action", "deferred_rate_limit")
 
+        # Every `claude --print` subprocess persists a session .jsonl under the
+        # config dir's projects/ tree. With the default config dir (~/.claude),
+        # those extractor runs pollute the user's real Claude Code history (the
+        # VSCode extension / history picker lists them). We redirect the child
+        # to an isolated CLAUDE_CONFIG_DIR sidecar — the extension never scans
+        # it — while symlinking the auth-bearing files back to the real config
+        # dir so subscription/OAuth login still resolves. Set to null/empty to
+        # opt out and share the caller's history dir.
+        iso = llm_cfg.get("isolated_config_dir", "~/.claude-skillsynapse")
+        self.isolated_config_dir: Optional[str] = (
+            str(Path(iso).expanduser()) if iso else None
+        )
+        if self.isolated_config_dir:
+            self._ensure_isolated_config_dir()
+
+    def _ensure_isolated_config_dir(self) -> None:
+        """Idempotently provision the sidecar CLAUDE_CONFIG_DIR: create it and
+        symlink the auth files (`.credentials.json`, `.claude.json`) from the
+        real config dir so the headless child authenticates with the same
+        subscription account. Best-effort — a symlink failure just means the
+        child falls back to its own (empty) auth, surfacing as an LLMError the
+        caller already handles, rather than crashing provider construction."""
+        try:
+            side = Path(self.isolated_config_dir)
+            side.mkdir(parents=True, exist_ok=True)
+            real = Path(
+                os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude"))
+            ).expanduser()
+            # `.claude.json` lives next to the config dir (in $HOME), not inside it.
+            for target, link in (
+                (real / ".credentials.json", side / ".credentials.json"),
+                (Path.home() / ".claude.json", side / ".claude.json"),
+            ):
+                if target.exists() and not link.is_symlink():
+                    link.symlink_to(target)
+        except OSError:
+            # Don't let history-isolation setup take down the whole run.
+            self.isolated_config_dir = None
+
     def call(
         self,
         prompt: str,
@@ -107,6 +147,12 @@ class LLMProvider:
         # can run as a nightly cron triggered from within a Claude Code session.
         env = os.environ.copy()
         env.pop("CLAUDECODE", None)
+
+        # Keep the child's session history out of the user's real Claude Code
+        # history (see _ensure_isolated_config_dir). When opted out, the child
+        # inherits whatever CLAUDE_CONFIG_DIR the parent had (default ~/.claude).
+        if self.isolated_config_dir:
+            env["CLAUDE_CONFIG_DIR"] = self.isolated_config_dir
 
         import time
         t0 = time.time()

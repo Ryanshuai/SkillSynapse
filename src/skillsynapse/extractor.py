@@ -18,6 +18,7 @@ from .config import Config
 from .episode_detector import Episode, detect_episodes
 from .llm_provider import LLMError, LLMProvider, RateLimitDeferred
 from .models import SkillRecord, iso_now
+from .sanitizer import scrub
 from .scanner import (
     Event,
     first_user_text,
@@ -125,7 +126,9 @@ def _build_session_brief(events: list[Event], max_calls: int = 60) -> str:
         if len(brief_tools) >= max_calls:
             break
 
-    return (
+    # Scrub the assembled brief once: credentials typed in commands or pasted
+    # into chat must never reach the LLM prompt.
+    return scrub(
         f"SESSION STATS: {total} tool calls, {diversity} distinct tools, "
         f"error_rate={err_rate:.2f}\n\n"
         f"FIRST USER MESSAGE:\n{fu}\n\n"
@@ -158,6 +161,12 @@ Analyze this session and pick ONE:
   PITFALL  — a failure mode worth attaching to an existing skill
   SKIP     — nothing reusable
 
+DEDUP FIRST: before choosing NEW, scan EXISTING SKILLS above. If your candidate
+is the SAME underlying capability as one that already exists — even under a
+different name or with different specifics (a different board/camera/dataset) —
+do NOT mint a near-duplicate. Choose UPDATE (add the missing step/variant) or
+PITFALL, or narrow the NEW to only what is genuinely uncovered.
+
 PRE-SKIP RULES (any match → SKIP, do not force):
 
   a. MULTI_TOPIC_DRIFT: the session touches >3 unrelated concerns
@@ -173,12 +182,20 @@ If NEW, you MUST produce:
                   If none fit, pick the closest and mention the mismatch
                   inside `content`.
   name:           slug, ≤64 chars, unique in the hierarchy.
-  description:    one line, ≤1024 chars. Verb-first phrase. Answer
-                  "when would I use this?", not "how does it work?".
-                  Prefer facts about scope (language, scale, OS), not
-                  accidental sources (where the evidence came from).
-                  Optional "not ..." clause is fine if the skill is prone to
-                  keyword mis-matches.
+  description:    one line, ≤1024 chars, verb-first. Answers "when would I use
+                  this?", not "how does it work?". Describe the GENERAL, reusable
+                  capability — NOT the one specific instance you happened to see.
+                  HARD RULE — no project-specific proper nouns in `name` or
+                  `description`: no source file names (rig.json, gt_pipeline), no
+                  dataset/scene IDs (scene_042, eth3d), no hardware model numbers
+                  (Gemini 335Le, Jetson Orin). Those go in `content` as examples.
+                  Scope facts (language, OS, scale, input/output kind) are good;
+                  accidental sources are not.
+                    bad : "Refine a box GT pose against its SfM cloud for the
+                           Gemini 335Le rig using scene_XXX/rig.json"
+                    good: "Refine a fitted 3D cuboid pose against an SfM point
+                           cloud when one face is under-constrained"
+                  Optional "not ..." clause is fine if prone to keyword mis-match.
   content:        full SKILL.md body (steps, commands, pitfalls).
   critical_tools: 1–3 tools without which the skill is useless. OK empty.
 
@@ -428,7 +445,7 @@ def log_non_new_action(candidate: ExtractedCandidate, store: Store) -> None:
             source_session=candidate.session_id,
             details={
                 "target_skill": candidate.target_skill,
-                "change": (candidate.change or "")[:300],
+                "change": scrub((candidate.change or "")[:300]),
             },
         )
     elif candidate.action == "PITFALL":
@@ -437,7 +454,7 @@ def log_non_new_action(candidate: ExtractedCandidate, store: Store) -> None:
             source_session=candidate.session_id,
             details={
                 "intended_parent_hint": candidate.intended_parent_hint,
-                "pitfall_text": (candidate.pitfall_text or "")[:300],
+                "pitfall_text": scrub((candidate.pitfall_text or "")[:300]),
             },
         )
     else:
@@ -532,12 +549,15 @@ def realize_candidate(
         if t and t not in seen_deps:
             tool_deps_ordered.append(t)
             seen_deps.add(t)
+    # Second scrub before persisting: the brief fed to the LLM is already
+    # clean, but the model can still echo credentials it saw elsewhere in
+    # context into the skill body — and skill files get published/synced.
     skill = SkillRecord(
         skill_id=str(uuid4()),
         name=name,
-        description=(candidate.description or "").strip()[:1024],
+        description=scrub((candidate.description or "").strip()[:1024]),
         category=cat,
-        content=candidate.content,
+        content=scrub(candidate.content),
         origin="captured",
         manual_protected=False,
         version=1,
