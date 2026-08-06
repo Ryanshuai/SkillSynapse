@@ -1,167 +1,203 @@
-# 02 · 传输、安全与 hub
+# 02 · Transport, security, and the hub
 
-> 底座文档。数据平面的**唯一真相源**:数据怎么在机器间流动、安全边界在哪、
-> **同步通道矩阵**(什么走什么)、hub 是什么、怎么部署。其它文档一律引用本页,不重述。
+> Foundation document. The **single source of truth** for the data plane: how data moves
+> between machines, where the security boundary is, **the sync channel matrix** (what travels
+> over what), what the hub is, and how to deploy it. Every other document cites this page
+> rather than restating it.
 >
-> **v0.2 定调**:安全边界从「内容脱敏」改为「内外网隔离」——tailnet 内部各机之间原始 JSONL
-> 自由同步、不做脱敏(小团队,效率优先);唯一红线是**汇聚流量绝不出 Tailscale mesh**。
+> **Decided for v0.2**: the security boundary moved from "sanitize the content" to "isolate the
+> network" — inside the tailnet, machines sync raw JSONL freely with no sanitization (small
+> team, efficiency first). The one red line is that **aggregation traffic never leaves the
+> Tailscale mesh**.
 
-## 1. 汇聚架构:推送式,不用拉取式
+## 1. Aggregation: push, not pull
 
-**选型:Syncthing 单向同步(send-only → receive-only),汇聚到 hub。**
+**Choice: one-way Syncthing (send-only → receive-only), aggregating to a hub.**
 
 ```
-每台机器  ~/.claude/projects/   (send-only folder)
+each machine  ~/.claude/projects/   (send-only folder)
                  │
                  ▼  Syncthing over Tailscale
-hub       ~/cc-logs/<hostname>/   (receive-only)  →  夜间归档进 cc-archive/(见 01)
+hub           ~/cc-logs/<hostname>/   (receive-only)  →  archived nightly into cc-archive/ (see 01)
 ```
 
-选推送而非拉取(hub 半夜 SSH 去各机 rsync)的原因:
+Why push rather than pull (the hub SSHing out to rsync from each machine at night):
 
-- **无人值守容错**:笔记本合盖、机器关机时拉取扑空;推送模式下机器上线后自动补传,夜间任务读的是
-  「已缓存到本地的最新数据」。
-- 复用现有 Tailscale mesh。替代方案 `rsync over Tailscale SSH` 也可行(约十行),但要接受
-  「机器不在线则缺当天数据」。
+- **Unattended fault tolerance**: a closed laptop lid or a powered-off machine makes a pull come
+  up empty. With push, a machine catches up automatically when it comes back online, and the
+  nightly job reads "the newest data already cached locally".
+- It reuses the existing Tailscale mesh. The alternative, `rsync over Tailscale SSH`, also works
+  (about ten lines), but you have to accept "machine offline means today's data is missing".
 
-### 1.1 传输层:Tailscale
+### 1.1 Transport layer: Tailscale
 
-mesh 已建好(2026-07-03 实测)。**具体节点清单(机器名↔tailnet IP↔角色)属拓扑机密,只存本地
-`LOCAL-TOPOLOGY.md`(gitignored)**;结构上是:若干源机 + 一台常在线 Linux 机作**临时 hub** +
-一台最终的**常驻 hub**(尚未就位)。
+The mesh is up (verified 2026-07-03). **The concrete node list (machine name ↔ tailnet IP ↔
+role) is confidential topology and lives only in a local, gitignored `LOCAL-TOPOLOGY.md`.**
+Structurally it is: several source machines + one always-on Linux box acting as the **interim
+hub** + one eventual **permanent hub** (not yet in place).
 
-> 常驻 hub 就位前用常在线的临时 hub 先把 nightly loop 跑起来,就位后把 receive-only 目录迁过去即可。
-> 注意 `tailscale status` 报过 DNS 健康告警(configured DNS 不可达),可能影响 MagicDNS——所以
-> Syncthing 设备地址一律**硬编码 tailnet IP**,不依赖 MagicDNS。
+> Until the permanent hub is in place, run the nightly loop on the always-on interim hub; once
+> it arrives, move the receive-only directories over.
+> Note that `tailscale status` has reported a DNS health warning (configured DNS unreachable),
+> which can affect MagicDNS — so Syncthing device addresses always **hard-code the tailnet IP**
+> and never rely on MagicDNS.
 
-## 2. 安全:内外网隔离(不做内容脱敏) {#安全内外网隔离}
+## 2. Security: network isolation, not content sanitization {#security-isolation}
 
-**红线:数据绝不出 Tailscale mesh。** mesh 之内当可信内网(明文随便传),mesh 边界就是内外网边界。
-放弃「公司机本地脱敏、原始 JSONL 不出本机」这类内容级管控,换成网络层隔离,省掉每台机器写脱敏脚本的成本。
-隔离靠三层叠加,每层独立成立:
+**Red line: data never leaves the Tailscale mesh.** Inside the mesh is trusted private network
+(plaintext travels freely); the mesh boundary is the boundary between inside and outside. This
+drops content-level controls such as "sanitize on the company machine, raw JSONL never leaves
+that host" in favour of network-layer isolation, which saves writing a sanitizing script on
+every machine. Isolation is three independent layers stacked:
 
-1. **Tailscale 传输**:所有汇聚流量走 WireGuard 加密 mesh,本身不暴露公网。
-2. **Syncthing 关公网路径**(见 §2.1):全局发现/中继/本地广播/UPnP 全关,设备地址硬编码 tailnet IP。
-   Syncthing 因此**没有任何触达公网的代码路径**。
-3. **Tailscale ACL**:admin 面板限定 Syncthing 端口(22000)只在「源机↔hub」之间可达,无关设备连不到。
+1. **Tailscale transport**: all aggregation traffic runs over the encrypted WireGuard mesh and
+   is not exposed to the public internet.
+2. **Syncthing's public paths disabled** (see §2.1): global discovery / relays / local broadcast
+   / UPnP all off, device addresses hard-coded to tailnet IPs. Syncthing therefore has **no code
+   path that reaches the public internet at all**.
+3. **Tailscale ACL**: the admin panel restricts the Syncthing port (22000) to "source machine ↔
+   hub" only; unrelated devices cannot connect.
 
-**hub 侧收敛**:`~/cc-logs/` 权限 700,只有 hub 本人可读。**真正的内→外出口是 hub 上的外发环节,不是
-mesh 内部**:知识日报同步到云笔记、Step C 调云端服务——这些点才需单独把关(内容是否可外发,过 `scrub()`)。
-mesh 内部同步不设防。
+**Hub-side narrowing**: `~/cc-logs/` is mode 700, readable only by the hub's own user. **The
+real inside→outside exit is the hub's outbound steps, not anything inside the mesh**: syncing
+the knowledge digest to a cloud notebook, Step C calling a cloud service — those are the points
+that need their own gate (is this content allowed out, has it passed `scrub()`). Sync inside the
+mesh is unguarded.
 
-> **完整红线清单**见仓库根 `CLAUDE.md`(最高优先级)。要点:原始日志(各机 `~/.claude/projects/`、
-> hub `~/cc-logs/`、extractor 隔离历史 `~/.claude-skillsynapse/`)不 commit、不外发、不上公网服务;
-> 唯一对外通道是过 `sanitizer.scrub()` 的 session brief 与 skill 文件;拓扑清单只存 `LOCAL-TOPOLOGY.md`。
+> **The complete red line list** is in the repo-root `CLAUDE.md` (highest priority). In short:
+> raw logs (each machine's `~/.claude/projects/`, the hub's `~/cc-logs/`, the extractor's
+> isolated history `~/.claude-skillsynapse/`) are never committed, never sent out, never
+> uploaded to a public service; the only outbound path is a session brief or skill file that has
+> passed `sanitizer.scrub()`; the topology list lives only in `LOCAL-TOPOLOGY.md`.
 
-### 2.1 Syncthing 隔离配置(硬约束)
+### 2.1 Syncthing isolation config (hard constraint)
 
-各机 `~/.claude/projects/` 配 send-only folder,hub 侧 receive-only 落到 `~/cc-logs/<hostname>/`。
-**为保证数据永不出 mesh,必须关掉一切公网路径**:
+Each machine configures `~/.claude/projects/` as a send-only folder; the hub receives read-only
+into `~/cc-logs/<hostname>/`. **To guarantee data never leaves the mesh, every public path must
+be turned off:**
 
 ```
-每台机 Syncthing 配置(config.xml / GUI Advanced):
-  · folderType            = sendonly / receiveonly     # 源机只推,hub 只收
-  · globalAnnounceEnabled = false      # 关全局发现,不上报公网发现服务器
-  · relaysEnabled         = false      # 关中继,不经 Syncthing 公网 relay
-  · localAnnounceEnabled  = false      # 关本地广播(tailnet 非 L2 广播域)
-  · natEnabled            = false      # 关 UPnP/NAT-PMP,不主动打洞
-  · 每个 peer 的 device address 硬编码:tcp://100.x.x.x:22000   # 只走 tailnet IP
-  · GUI 只绑 127.0.0.1:8384 + 强密码   # 管理面不进 tailnet,更不进公网
+Syncthing config on each machine (config.xml / GUI Advanced):
+  · folderType            = sendonly / receiveonly     # sources only push, hub only receives
+  · globalAnnounceEnabled = false      # no global discovery, nothing reported to public servers
+  · relaysEnabled         = false      # no relaying through Syncthing's public relays
+  · localAnnounceEnabled  = false      # no local broadcast (a tailnet is not an L2 domain)
+  · natEnabled            = false      # no UPnP/NAT-PMP, no hole punching
+  · every peer's device address hard-coded: tcp://100.x.x.x:22000   # tailnet IP only
+  · GUI bound to 127.0.0.1:8384 with a strong password   # admin plane not even on the tailnet
 ```
 
-数据流被钉死在 `100.x.x.x:22000`(tailnet,WireGuard 加密)。**内外网隔离由此在同步层落地。**
+The data flow is pinned to `100.x.x.x:22000` (tailnet, WireGuard-encrypted). **That is how
+network isolation lands at the sync layer.**
 
-> **验证(2026-07-03)**:源机(sendonly)↔临时 hub(receiveonly)实测打通。日志确认
-> `Established secure connection … connection.lan=false connection.crypto=TLS1.3`,连接建立在两机
-> tailnet IP 之间;`~/.claude/projects`(4.9 G / 4200+ 文件)全量同步通过。用 v2.1.1 静态二进制免 root
-> 装于 `~/.local/bin`。配置脚本见 `deploy/syncthing/`。
+> **Verification (2026-07-03)**: source machine (sendonly) ↔ interim hub (receiveonly) confirmed
+> working. Logs show `Established secure connection … connection.lan=false connection.crypto=TLS1.3`,
+> with the connection established between the two machines' tailnet IPs;
+> `~/.claude/projects` (4.9 GB / 4200+ files) synced in full. Installed root-free from the v2.1.1
+> static binary into `~/.local/bin`. Configuration scripts are in `deploy/syncthing/`.
 
-## 3. 同步通道矩阵(唯一 owner) {#同步通道矩阵}
+## 3. Sync channel matrix (single owner) {#sync-matrix}
 
-系统里流动着几类数据,**各走各的通道,不要混**。任何文档提到「X 怎么同步」都以本表为准:
+Several kinds of data move through this system, and **each takes its own channel — don't mix
+them**. Any document that mentions "how X syncs" defers to this table:
 
-| 数据 | 通道 | 方向 | 要历史? | 理由 |
+| Data | Channel | Direction | History? | Why |
 |---|---|---|---|---|
-| 原始 JSONL 语料 | **Syncthing** | 源机 → hub 单向 | 否 | 大(GB 级)、只增、不需 merge |
-| 进化出的 skill / command | **git**(push/pull) | 双向 | 是 | 小、要回滚 + **跨机 merge**(多源改同一批 skill,git 合并优于单向覆盖),见 [03 §git 发布](03-shared-primitives.md#git-发布模型) |
-| 台账 / Notes **索引层**(几 K token) | 反向 Syncthing folder 或 synapse repo push | hub → 各机 | 否 | 小,供各机开工时本地查(见 [06 §3](06-worklog-and-notes.md)) |
-| `~/.claude/commands/` + 全局 `CLAUDE.md`(发现入口) | **deploy 脚本逐机下发** | 无同步 | — | 每机幂等安装,不进任何同步链,见 [05 §6](05-marking-signal.md#6-部署与发现) |
+| Raw JSONL corpus | **Syncthing** | source → hub, one-way | no | large (GB), append-only, no merging needed |
+| Evolved skills / commands | **git** (push/pull) | bidirectional | yes | small, needs rollback and **cross-machine merges** (several sources edit the same skills; git merging beats one-way overwrite), see [03 §git publishing](03-shared-primitives.md#git-publishing) |
+| Ledger / Notes **index layer** (a few K tokens) | a reverse Syncthing folder, or a synapse repo push | hub → each machine | no | small; each machine queries it locally when starting work (see [06 §3](06-worklog-and-notes.md)) |
+| `~/.claude/commands/` + global `CLAUDE.md` (the discovery entry point) | **deploy script, per machine** | not synced | — | idempotent install per machine, never enters any sync chain, see [05 §6](05-marking-signal.md#deploy-and-discovery) |
 
-**推论**:标记随 `~/.claude/projects/*.jsonl` 免费搭 Syncthing 同步到 hub(所以 [11](05-marking-signal.md) 走
-transcript 而非本地 sidecar DB——sidecar 不进同步链等于白标);而发现入口(commands/CLAUDE.md)**不同步**,
-必须靠 deploy 脚本逐机下发。**原料上行、蒸馏物下行**是总方向。
+**Corollary**: marks ride along with `~/.claude/projects/*.jsonl` and reach the hub over
+Syncthing for free (which is why [05](05-marking-signal.md) goes through the transcript rather
+than a local sidecar DB — a sidecar never enters the sync chain, so marking into it is wasted);
+whereas the discovery entry point (commands / CLAUDE.md) is **not synced** and must be installed
+per machine by a deploy script. The overall direction is **raw material up, distillate down**.
 
-## 4. hub = 知识库管理者 {#hub-知识库管理者}
+## 4. The hub = knowledge base manager {#hub-role}
 
-hub 身份:从「夜间任务的读取暂存区」升格为**知识库运行时**。四块职责:
+The hub's identity is promoted from "a staging area the nightly job reads" to a **knowledge base
+runtime**. Four responsibilities:
 
-| 职责 | 内容 | 详见 |
+| Responsibility | What it covers | See |
 |---|---|---|
-| **归档** | 着陆区→归档区搬运、只增不删、备份、指针可解引用 | [01 §4](01-corpus-and-archive.md#4-归档jsonl-升格为唯一不可重建资产) |
-| **蒸馏** | 夜间跑抽取 pass + 台账 roll-up + 日报(headless `claude -p`,订阅额度) | [06 §2](06-worklog-and-notes.md) |
-| **索引** | 维护台账/Notes 索引,是逐级下钻的入口与解引用服务 | [06 §3](06-worklog-and-notes.md) |
-| **分发** | 蒸馏物下行:skill 走 synapse repo→`~/.claude` 发布视图;索引层同步回各机 | §3 矩阵 |
+| **Archive** | landing zone → archive moves, append-only, backups, dereferenceable pointers | [01 §4](01-corpus-and-archive.md#archive) |
+| **Distill** | run the extraction pass nightly + ledger roll-up + digest (headless `claude -p`, on subscription quota) | [06 §2](06-worklog-and-notes.md) |
+| **Index** | maintain the ledger/Notes index; it is the entry point for drill-down and the dereferencing service | [06 §3](06-worklog-and-notes.md) |
+| **Distribute** | distillate flows down: skills go through the synapse repo → the `~/.claude` publishing view; the index layer syncs back to each machine | §3 matrix |
 
-### 4.1 常驻循环:hub 是服务,不是单次夜间批任务
+### 4.1 Resident loops: the hub is a service, not a single nightly batch
 
-「不停拉取管理」不等于所有环节同频。同步接收由 Syncthing 推送解决(hub 被动收,无需拉);要常驻的是
-处理侧几个循环,各有自然节奏:
+"Continuously pulling and managing" does not mean every step runs at the same rate. Receiving
+sync is solved by Syncthing's push (the hub receives passively, nothing to pull); what needs to
+be resident is a handful of processing loops, each with its own natural cadence:
 
-| 循环 | 频率 | 成本 | 说明 |
+| Loop | Frequency | Cost | Notes |
 |---|---|---|---|
-| 同步接收 | 实时 | 零 | 源机推送,hub 被动收 |
-| 归档搬运 | 每小时 | 纯文件操作 | 着陆区新增→`cc-archive/`;越频繁「未归档先被删」窗口越小 |
-| 抽取 pass | 滚动,每 2–4h 一批 | LLM(订阅) | 只处理**静默 ≥ 30min** 的会话(进行中的 JSONL 还在追加,episode 未闭合) |
-| 台账 roll-up + 索引重建 | 抽取后触发 | LLM(轻) | 事件驱动,不独立设频 |
-| 索引层下行分发 | 索引变更后 | 零 | 反向 Syncthing / repo push |
-| 日报合成 | 每晚一次 | LLM | 唯一真正「夜间」的环节 |
-| 备份 + 健康自检 | 每日 | 低 | 各源机 last-seen / 积压量 / 失败数并入日报——管道坏了第二天早上就知道 |
+| Receive sync | real time | zero | sources push, hub receives passively |
+| Archive move | hourly | pure file operations | landing zone additions → `cc-archive/`; the more often, the smaller the "deleted before archived" window |
+| Extraction pass | rolling, one batch every 2–4h | LLM (subscription) | only handles sessions **quiet for ≥ 30 min** (a live JSONL is still being appended to, so its episodes aren't closed) |
+| Ledger roll-up + index rebuild | triggered after extraction | LLM (light) | event-driven, no independent cadence |
+| Index layer distribution | after the index changes | zero | reverse Syncthing / repo push |
+| Digest synthesis | once nightly | LLM | the only genuinely "nightly" step |
+| Backup + health self-check | daily | low | each source's last-seen / backlog / failure count folds into the digest — a broken pipe is visible the next morning |
 
-**增量纪律是「不停跑」的安全前提**:每循环幂等 + 带水位线(状态表记录每个 session 文件的已处理行偏移);
-重跑无副作用,漏跑自动补上。机器关机/循环挂掉只是延迟,不丢数据(数据安全由归档层保证)。实现不用自写
-daemon:沿用 deploy 里的 `systemd --user` 模式(syncthing-cc.service 同款),每循环一个 timer 调幂等入口。
+**Incremental discipline is the safety precondition for running continuously**: every loop is
+idempotent and carries a watermark (a state table records the processed line offset per session
+file). Re-running has no side effects, and a missed run catches up on its own. A powered-off
+machine or a crashed loop only causes delay, never data loss (data safety is the archive layer's
+job). Implementing this needs no bespoke daemon: reuse the `systemd --user` pattern already in
+`deploy` (same as syncthing-cc.service), with one timer per loop calling an idempotent entry point.
 
-## 5. 额度与计费(订阅方案)
+## 5. Quota and billing (subscription plan)
 
-- CLI 用 claude.ai 账号 OAuth 登录,与网页端/IDE 共享同一订阅额度池,**不额外付费**。
-- **两个必须避开的坑**:
-  1. cron/systemd 环境变量里**绝不能有 `ANTHROPIC_API_KEY`**——存在即切 API 按量计费,绕过订阅。
-     部署脚本须显式检查(红线,见 `CLAUDE.md` 运行约束)。
-  2. 撞限额时 CLI 提示「用 API credits 继续」;Console 侧不开 auto-reload。最坏是任务失败等窗口重置,不多扣钱。
-- v0.1 `llm_provider` 已内置 rate limit guard(撞限额 defer)。额度充裕(Max $200),放开跑,别加保守封顶;
-  唯一红线是环境无 `ANTHROPIC_API_KEY`。
-- headless `claude --print` 必须用隔离 `CLAUDE_CONFIG_DIR`(`~/.claude-skillsynapse`),不污染用户真实
-  CC/VSCode 历史(已实现,见 `llm_provider.py`)。
-- 补充参照:官方 Claude Code Routines(云端定时,Max 15 次/天)适合**不依赖本地环境**的纯任务;
-  凡碰本地文件/设备/mesh 的归本地调度。
+- The CLI logs in over OAuth with a claude.ai account, sharing one subscription quota pool with
+  the web and IDE clients — **no extra charge**.
+- **Two traps that must be avoided**:
+  1. `ANTHROPIC_API_KEY` **must never** be in the cron/systemd environment — if it is, you switch
+     to metered API billing and bypass the subscription. Deployment scripts must check for it
+     explicitly (red line, see the runtime constraints in `CLAUDE.md`).
+  2. On hitting the limit the CLI offers to "continue with API credits"; do not enable
+     auto-reload on the Console side. The worst case is then a failed job waiting for the window
+     to reset, not a larger bill.
+- v0.1's `llm_provider` already has a rate-limit guard built in (defers on hitting the limit).
+  Quota is plentiful (Max $200) — run freely, don't add conservative caps; the one red line is
+  that the environment has no `ANTHROPIC_API_KEY`.
+- Headless `claude --print` must use an isolated `CLAUDE_CONFIG_DIR` (`~/.claude-skillsynapse`)
+  so it never pollutes the user's real CC/VSCode history (implemented, see `llm_provider.py`).
+- For reference: official Claude Code Routines (cloud-scheduled, 15/day on Max) suit **tasks
+  with no local dependency**; anything touching local files, devices, or the mesh belongs to
+  local scheduling.
 
-## 6. 部署
+## 6. Deployment
 
-> **已落地为脚本**:`deploy/syncthing/`(`setup-hub.sh` / `onboard-source.sh` / `add-source.sh` +
-> `stconfig.py`)。源机↔临时 hub 链路实测打通(§2.1)。发现入口的 deploy 见 [05 §6](05-marking-signal.md#6-部署与发现)。
+> **Already delivered as scripts**: `deploy/syncthing/` (`setup-hub.sh` / `onboard-source.sh` /
+> `add-source.sh` + `stconfig.py`). The source ↔ interim hub link is verified working (§2.1).
+> Deployment of the discovery entry point is in [05 §6](05-marking-signal.md#deploy-and-discovery).
 
-**A. 现在就能做(不依赖常驻 hub)**
+**A. Doable now (no dependency on the permanent hub)**
 
-- [x] 常在线 Linux 机起临时 hub:装 Syncthing,建 `~/cc-logs/` + 权限 700 — 已完成并验证
-- [ ] 各源机装 Syncthing,`~/.claude/projects/` 配 send-only → hub receive-only(按 `<hostname>` 分子目录)
-- [ ] **内外网隔离硬措施**(每台,§2.1):关 globalAnnounce/relays/localAnnounce/nat;地址硬编码;GUI 绑 127.0.0.1
-- [ ] Tailscale ACL:端口 22000 仅「源机↔hub」可达
-- [x] scanner 多 root 改造 — 已实现(见 [01 §2](01-corpus-and-archive.md#2-处理底座scannerepisodeextractor))
-- [ ] 预处理脚本(原始 JSONL → 摘要,供日报;抽取 pass 仍吃 episode)
-- [ ] 归档 bug 修复(见 [01 §4.1](01-corpus-and-archive.md#41-现有部署的真-bug证据链活不过一个月))——每天都在丢证据,优先
-- [ ] 部署前检查:环境无 `ANTHROPIC_API_KEY`;Console 未开 auto-reload
+- [x] Stand up the interim hub on an always-on Linux box: install Syncthing, create `~/cc-logs/` mode 700 — done and verified
+- [ ] Install Syncthing on each source machine, configure `~/.claude/projects/` send-only → hub receive-only (one subdirectory per `<hostname>`)
+- [ ] **Network isolation hard measures** (every machine, §2.1): disable globalAnnounce/relays/localAnnounce/nat; hard-code addresses; bind the GUI to 127.0.0.1
+- [ ] Tailscale ACL: port 22000 reachable only between "source machine ↔ hub"
+- [x] scanner multi-root rework — implemented (see [01 §2](01-corpus-and-archive.md#processing-base))
+- [ ] Preprocessing script (raw JSONL → summary for the digest; the extraction pass still consumes episodes)
+- [ ] Fix the archiving bug (see [01 §4.1](01-corpus-and-archive.md#archive-bug)) — evidence is being lost every day; prioritize
+- [ ] Pre-deployment check: no `ANTHROPIC_API_KEY` in the environment; Console auto-reload off
 
-**B. 常驻 hub 就位后**
+**B. Once the permanent hub is in place**
 
-- [ ] 常驻 hub 加入 tailnet;`~/cc-logs/` 或 `/data/cc-logs/` + 权限 700
-- [ ] 各源机 send-only peer 从临时 hub 切到常驻 hub(或过渡期两者都收)
-- [ ] 定时器:macOS 用 launchd(不用 cron——睡眠/权限不可靠),Linux 用 `systemd --user` timer
-- [ ] 临时 hub 退役或降级为热备
+- [ ] Join the permanent hub to the tailnet; `~/cc-logs/` or `/data/cc-logs/` mode 700
+- [ ] Repoint each source's send-only peer from the interim hub to the permanent hub (or have both receive during the transition)
+- [ ] Timers: launchd on macOS (not cron — sleep and permissions are unreliable there), `systemd --user` timers on Linux
+- [ ] Retire the interim hub, or demote it to a warm standby
 
-## 7. 验收标准(30 天军令状)
+## 7. Acceptance criteria (a 30-day commitment)
 
-常驻 hub 就位 30 天内跑通三件事,否则说明瓶颈不在硬件:
+Three things must be working within 30 days of the permanent hub being in place; otherwise the
+bottleneck was never the hardware:
 
-1. Telegram bot 常驻(交互入口)
-2. 夜间多机知识总结任务上线
-3. SkillSynapse v0.1 nightly loop 跑通
+1. A resident Telegram bot (the interactive entry point)
+2. The nightly multi-machine knowledge summary job in production
+3. The SkillSynapse v0.1 nightly loop running end to end

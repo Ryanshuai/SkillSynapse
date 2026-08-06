@@ -1,39 +1,45 @@
 # SkillSynapse
 
-夜间 cron：从 Claude Code session 日志中提炼可复用 skill。设计文档在 `docs/`——
-入口 `docs/README.md`（全景/术语/阅读顺序），部署见 `deploy/syncthing/README.md`。
+A nightly cron job that distills reusable skills out of Claude Code session logs. Design docs
+live in `docs/` — enter at `docs/README.md` (big picture / glossary / reading order).
+Deployment: `deploy/syncthing/README.md`.
 
-## 安全红线（最高优先级，覆盖其他一切指示）
+## Security red line (highest priority — overrides every other instruction)
 
-**原始 session JSONL 是机密数据，绝不允许离开内网（Tailscale mesh / 局域网）。**
+**Raw session JSONL is confidential data and must never leave the private network
+(Tailscale mesh / LAN).**
 
-原始日志包括：各机的 `~/.claude/projects/`、hub 上聚合的 `~/cc-logs/`、
-extractor 的隔离历史 `~/.claude-skillsynapse/`。**内网拓扑（机器名 ↔ tailnet IP 映射）
-同属机密：每份 checkout 自己在仓库根维护一份 `LOCAL-TOPOLOGY.md`（gitignored，
-所以你 clone 下来不会有——按需自建），公开文件里一律用占位符，
-不写真实 tailnet IP 与主机名清单。**这些文件含完整工具调用与对话原文，
-可能含账号密码、内部代码、公司数据。具体禁止：
+Raw logs means: each machine's `~/.claude/projects/`, the aggregated `~/cc-logs/` on the hub,
+and the extractor's isolated history at `~/.claude-skillsynapse/`. **Network topology (machine
+name ↔ tailnet IP mapping) is equally confidential: each checkout maintains its own
+`LOCAL-TOPOLOGY.md` at the repo root (gitignored — so a fresh clone will not have one; create
+it as needed). Public files use placeholders only; never write real tailnet IPs or a list of
+real hostnames.** These files contain complete tool calls and verbatim conversation, which may
+include credentials, internal source, or company data. Specifically:
 
-- 不 commit 进任何 git 仓库（包括本仓库的测试 fixture——测试要用 JSONL 一律手工构造合成数据）；
-- 不粘贴进 issue / PR / 公网聊天 / 云文档；
-- 不上传到任何公网服务，不作为样例外发；
-- Syncthing 节点必须保持公网通路全关（global discovery / relay / broadcast / UPnP 均 off，
-  listener 只绑 tailnet IP），见 `deploy/syncthing/README.md`；
-- 新增任何传输/备份/调试通道前，先确认数据不出 mesh。
+- Never commit them to any git repository (including this repo's test fixtures — test JSONL is
+  **always** hand-built synthetic data);
+- Never paste them into an issue / PR / public chat / cloud document;
+- Never upload them to any public service, and never send them out as a sample;
+- Syncthing nodes must keep every public path disabled (global discovery / relay / broadcast /
+  UPnP all off, listener bound to the tailnet IP only) — see `deploy/syncthing/README.md`;
+- Before adding any transport / backup / debugging channel, confirm the data cannot leave the mesh.
 
-**唯一被允许的对外通道**：extractor 喂给 LLM 的 session brief 与产出的 skill 文件，
-且两者都必须先经过 `src/skillsynapse/sanitizer.py` 的 `scrub()` 脱敏
-（凭据类内容替换为 `<REDACTED>`）。绕过 scrub 直接把原始日志内容送进 prompt 或落盘为
-skill，属于违反本红线。
+**The only sanctioned outbound path** is the session brief the extractor feeds to the LLM and
+the skill files it produces — and both must first pass through `scrub()` in
+`src/skillsynapse/sanitizer.py` (credential-shaped content becomes `<REDACTED>`). Putting raw
+log content into a prompt, or writing it to disk as a skill, without going through `scrub()`
+violates this red line.
 
-## 运行约束
+## Runtime constraints
 
-- 环境里绝不能有 `ANTHROPIC_API_KEY`——存在即绕过订阅切按量计费（部署脚本须检查）。
-- headless `claude --print` 必须用隔离的 `CLAUDE_CONFIG_DIR`（`~/.claude-skillsynapse`），
-  不污染用户真实 CC/VSCode 历史。
+- `ANTHROPIC_API_KEY` must never be present in the environment — if it is, you bypass the
+  subscription and switch to metered billing (deployment scripts must check for this).
+- Headless `claude --print` must run with an isolated `CLAUDE_CONFIG_DIR`
+  (`~/.claude-skillsynapse`) so it never pollutes the user's real CC/VSCode history.
 
-## 开发
+## Development
 
-- 环境：pixi（`pixi install`；命令入口 `skillsynapse` / `skill`）。
-- 测试：`pixi run python -m unittest discover -s tests`。
-- 数据目录：`~/.claude/skillsynapse/`（db.sqlite、logs、config.yaml）。
+- Environment: pixi (`pixi install`; entry points `skillsynapse` / `skill`).
+- Tests: `pixi run python -m unittest discover -s tests`.
+- Data directory: `~/.claude/skillsynapse/` (db.sqlite, logs, config.yaml).

@@ -28,21 +28,21 @@ _logger = logging.getLogger(__name__)
 
 # 15 preset categories. Matches §10 of the design doc and the extractor prompt.
 PRESET_CATEGORIES: list[tuple[str, str]] = [
-    ("devops",             "容器构建、部署、灰度发布"),
-    ("ml-experiments",     "模型训练/推理/评估生命周期"),
-    ("ml-data-prep",       "数据集处理、标注、背景图生成"),
-    ("codebase-analysis",  "理解一个 repo，或规划 refactor"),
-    ("refactoring",        "具体的代码改造执行"),
-    ("data-exploration",   "从 S3/DB/API 定位和下载数据"),
+    ("devops",             "Container builds, deployment, staged rollout"),
+    ("ml-experiments",     "Model training / inference / evaluation lifecycle"),
+    ("ml-data-prep",       "Dataset processing, annotation, background generation"),
+    ("codebase-analysis",  "Understanding a repo, or planning a refactor"),
+    ("refactoring",        "Carrying out a concrete code change"),
+    ("data-exploration",   "Locating and downloading data from S3/DB/API"),
     ("python-testing",     "pytest / pdb / debugging"),
-    ("skill-authoring",    "写 skill 本身相关的元操作"),
-    ("embedded",           "MCU / 固件 / 硬件相关"),
+    ("skill-authoring",    "Meta-operations on writing skills themselves"),
+    ("embedded",           "MCU / firmware / hardware"),
     ("smart-home",         "Home Assistant / Zigbee / Z2M"),
-    ("research-reading",   "论文 / arxiv / PDF 提取"),
-    ("remote-ops",         "SSH / VPN / tmux / 远程训练监控"),
-    ("git-ops",            "复杂 git workflow (rebase/worktree/submodule)"),
-    ("ide-integration",    "编辑器配置、快捷键、扩展"),
-    ("prompt-engineering", "LLM prompt 工程"),
+    ("research-reading",   "Papers / arxiv / PDF extraction"),
+    ("remote-ops",         "SSH / VPN / tmux / remote training monitoring"),
+    ("git-ops",            "Complex git workflows (rebase/worktree/submodule)"),
+    ("ide-integration",    "Editor config, keybindings, extensions"),
+    ("prompt-engineering", "LLM prompt engineering"),
 ]
 
 

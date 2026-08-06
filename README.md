@@ -1,92 +1,102 @@
 # SkillSynapse
 
-夜间 cron:从 Claude Code 的会话日志里蒸馏出可复用的 skill。
+A nightly cron job that distills reusable skills out of Claude Code session logs.
 
-你每天和 Claude Code 干的活里,有一部分是**可复用的流程** —— 但它们只以「聊天记录」的形式
-躺在 `~/.claude/projects/**/*.jsonl` 里,下次还得重讲一遍。SkillSynapse 每晚扫这些日志,
-把值得沉淀的那些抽成 `~/.claude/skills/<name>/SKILL.md`,让 Claude Code 下次自己就会。
-
----
-
-## ⚠️ 先读这一条:原始会话日志是机密数据
-
-**这个工具读的是你完整的对话原文与工具调用记录** —— 里面可能有账号密码、内部代码、
-客户数据。仓库的第一红线是:
-
-> **原始 session JSONL 绝不允许离开内网**(Tailscale mesh / 局域网)。
-> 唯一被允许的对外通道,是 `src/skillsynapse/sanitizer.py` 的 `scrub()` 脱敏之后的
-> session brief 与 skill 文件。
-
-具体禁止项(不 commit、不贴 issue、不上传公网服务、Syncthing 必须关全部公网通路)
-写在 [CLAUDE.md](CLAUDE.md),动手前请完整读一遍。测试用的 JSONL **一律手工构造合成数据**。
-
-> **多人使用时还有一层没定的问题**:每个人的会话日志属于他自己。这个仓库现在的传输
-> 设计([docs/02](docs/02-transport-and-security.md))是「多台机器 → 一个 hub」的
-> **单人多机**模型,不是「多人共享」模型。要在团队里跑之前,先回答:谁的日志汇到哪、
-> 谁能读。这个问题仓库里还没有答案。
+Part of what you do with Claude Code every day is a **reusable procedure** — but it only
+exists as a chat transcript sitting in `~/.claude/projects/**/*.jsonl`, so next time you
+explain it all over again. SkillSynapse scans those logs every night and turns the parts
+worth keeping into `~/.claude/skills/<name>/SKILL.md`, so Claude Code already knows them
+next time.
 
 ---
 
-## 现在能跑什么
+## ⚠️ Read this first: raw session logs are confidential
 
-| | 状态 |
+**This tool reads your complete conversation transcripts and tool-call records** — which
+may contain credentials, internal source, or customer data. The repository's first rule is:
+
+> **Raw session JSONL must never leave the private network** (Tailscale mesh / LAN).
+> The only sanctioned outbound path is the session brief and skill files *after* they pass
+> through `scrub()` in `src/skillsynapse/sanitizer.py`.
+
+The full prohibition list (never commit, never paste into an issue, never upload to a public
+service, Syncthing must have every public code path disabled) lives in [CLAUDE.md](CLAUDE.md).
+Read it end to end before touching anything. Test JSONL is **always hand-built synthetic data**.
+
+> **One question is still open for multi-person use.** Everyone's session logs belong to
+> them. The transport design in this repo ([docs/02](docs/02-transport-and-security.md)) is a
+> **single-owner, many-machines** model, not a **many-people** one. Before running this across
+> a team, answer: whose logs aggregate where, and who may read them. This repo does not
+> currently have an answer.
+
+---
+
+## What actually works today
+
+| | Status |
 |---|---|
-| **归纳环**(会话 → episode 切片 → LLM 抽取 → 落 SKILL.md → 渲染索引) | ✅ v0.1 可用 |
-| 脱敏 `scrub()`(session brief + skill 落盘双重) | ✅ 已接入 |
-| headless 历史隔离(独立 `CLAUDE_CONFIG_DIR`,不污染你真实的 CC 历史) | ✅ 已接入 |
-| 多机汇聚(Syncthing over Tailscale,单向 send-only → hub) | ✅ 实测打通 |
-| skill 去重/合并(`consolidator.py`) | ⚠️ 代码在,**没有任何入口**,从未执行过 |
-| 定向环 / 自动化环 / 标记信号 / 排序分诊 / prune | 📐 只有设计文档,无实现 |
+| **Inductive loop** (session → episode slicing → LLM extraction → SKILL.md → rendered index) | ✅ working, v0.1 |
+| Scrubbing via `scrub()` (both the session brief and the skill written to disk) | ✅ wired in |
+| Headless history isolation (its own `CLAUDE_CONFIG_DIR`, never pollutes your real CC history) | ✅ wired in |
+| Multi-machine aggregation (Syncthing over Tailscale, send-only → hub) | ✅ verified in practice |
+| Skill dedup / merge (`consolidator.py`) | ⚠️ code exists, **has no entry point**, has never run |
+| Directed loop / toil loop / marking signal / triage & ranking / prune | 📐 design docs only, no implementation |
 
-**当前最大的缺口**:产出的 skill 一律平权直接生效,库只进不出 —— 没有优先级排序,
-也没有人工闸门。设计见 [docs/07](docs/07-triage-and-ranking.md)。
+**Biggest gap right now:** every skill produced goes live with equal weight, and the library
+only grows — there is no priority ordering and no human gate. Design in
+[docs/07](docs/07-triage-and-ranking.md).
 
-## 跑起来
+## Running it
 
 ```bash
 pixi install
-pixi run python -m unittest discover -s tests     # 31 个 sanitizer 测试
+pixi run python -m unittest discover -s tests     # 31 sanitizer tests
 
-skill list          # 现有 skill
-skill show <name>   # 单个 skill 的正文 + 指标
-skill health        # 库整体健康度
+skill list          # existing skills
+skill show <name>   # one skill's body + metrics
+skill health        # library-wide health
 
-skillsynapse --dry-run        # 不调 LLM、不写 SKILL.md
-skillsynapse --hours-back 48  # 正式跑一晚
+skillsynapse --dry-run        # no LLM calls, no SKILL.md written
+skillsynapse --hours-back 48  # a real run
 ```
 
-⚠️ **环境里绝不能有 `ANTHROPIC_API_KEY`** —— 存在即绕过订阅、切成按量计费。
+⚠️ **`ANTHROPIC_API_KEY` must not be present in the environment** — if it is, you bypass
+your subscription and switch to metered API billing.
 
-⚠️ `--dry-run` **不是只读**:Step 0 的 manual skill 发现与 Step 2 的 metrics 采集在
-dry_run 判断之前就会写 `~/.claude/skillsynapse/db.sqlite`。要完全无副作用地试,
-把 `paths.*` 指到临时目录(见 [docs/README.md](docs/README.md) 的「测试与可验证性」)。
+⚠️ **`--dry-run` is not read-only.** Step 0's manual-skill discovery and Step 2's metrics
+collection both write to `~/.claude/skillsynapse/db.sqlite` *before* the dry_run check. For a
+genuinely side-effect-free trial, point `paths.*` at a temporary directory — see "Testing and
+verifiability" in [docs/README.md](docs/README.md).
 
-数据目录:`~/.claude/skillsynapse/`(`db.sqlite` / `logs/` / `config.yaml`)。
+Data directory: `~/.claude/skillsynapse/` (`db.sqlite` / `logs/` / `config.yaml`).
 
-## 代码地图
+## Code map
 
 ```
 src/skillsynapse/
-  main.py            夜间 pipeline 编排(cron 入口)
-  scanner.py         扫 .jsonl、解析成事件流
-  episode_detector.py  把一个会话切成若干段连贯工作
-  extractor.py       每段过一次 LLM,判 NEW / UPDATE / PITFALL / SKIP
-  indexer.py         写 SKILL.md + 渲染 _index.md / _categories.md
-  metrics.py         回读会话,统计 skill 被选中/用完的比例
-  store.py           SQLite + decisions.jsonl 审计
-  sanitizer.py       scrub() —— 唯一的对外脱敏闸门
-  consolidator.py    去重/合并(未接入入口)
-deploy/syncthing/    多机汇聚部署(每台幂等跑一次)
-docs/                设计文档,入口 docs/README.md
+  main.py              nightly pipeline orchestration (the cron entry point)
+  scanner.py           walks .jsonl, parses it into an event stream
+  episode_detector.py  splits one session into stretches of coherent work
+  extractor.py         one LLM pass per episode: NEW / UPDATE / PITFALL / SKIP
+  indexer.py           writes SKILL.md, renders _index.md / _categories.md
+  metrics.py           re-reads sessions to score how often a skill is picked and completed
+  store.py             SQLite + a decisions.jsonl audit trail
+  sanitizer.py         scrub() — the single outbound sanitization gate
+  consolidator.py      dedup / merge (not wired to any entry point)
+deploy/syncthing/      multi-machine aggregation (run once per machine, idempotent)
+docs/                  design docs; start at docs/README.md
 ```
 
-## 已知的坑
+## Known traps
 
-- **16 个模块里只有 1 个有测试**(只有 `sanitizer.py`)。改任何别的模块都没有验证下限,
-  动手前先补测试,或者用临时目录沙箱手工比对前后输出。
-- `consolidator.py` 有 448 行完整实现但没有 CLI 入口,`decisions.jsonl` 里也从没有过
-  它的执行记录。别照着它扩展,先确认它到底要不要。
+- **Only 1 of 16 modules has tests** (just `sanitizer.py`). Changing anything else has no
+  verification floor — add tests first, or sandbox it in a temp directory and diff the
+  before/after output by hand.
+- `consolidator.py` is 448 lines of complete implementation with no CLI entry point, and
+  `decisions.jsonl` has no record of it ever running. Don't extend it before deciding whether
+  it should exist at all.
 
-## 设计文档
+## Design docs
 
-从 [docs/README.md](docs/README.md) 进 —— 那里有全景图、术语表和阅读顺序。
+Enter through [docs/README.md](docs/README.md) — it has the big picture, the glossary, and
+the reading order.
