@@ -12,6 +12,7 @@ Post-review fixes applied:
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -23,6 +24,9 @@ import yaml
 
 from .models import SkillRecord, normalize_ts
 from .store import Store
+
+
+logger = logging.getLogger(__name__)
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", re.DOTALL)
@@ -174,7 +178,12 @@ def _file_newer_than_db(skill_md: Path, existing: SkillRecord) -> bool:
     win over an unparseable DB stamp."""
     try:
         file_dt = datetime.fromtimestamp(skill_md.stat().st_mtime).replace(microsecond=0)
-    except OSError:
+    except OSError as e:
+        # No mtime means we can't tell whether the user edited this file, so we
+        # leave the DB row alone. Say it out loud: a manual skill that silently
+        # stops refreshing looks identical to one nobody has touched.
+        logger.warning("cannot stat %s (%s) — leaving its DB row unrefreshed",
+                       skill_md, e)
         return False
     db_normalized = normalize_ts(existing.updated_at)
     if not db_normalized:
