@@ -467,15 +467,34 @@ class Store:
                 (ts, action, skill.skill_id, skill.name, payload, None),
             )
 
-        # jsonl mirror lives outside the DB transaction (§10 audit note: the
-        # DB row is the source of truth; jsonl is a convenience for grep).
+        # The jsonl mirror deliberately lives outside the DB transaction above
+        # (§10 audit note: the DB row is the source of truth).
+        self._mirror_decision_to_jsonl(
+            ts=ts, action=action, skill_id=skill.skill_id,
+            skill_name=skill.name, details=details, source_session=None,
+        )
+
+    # ── decisions log ─────────────────────────
+
+    def _mirror_decision_to_jsonl(
+        self, *, ts: str, action: str, skill_id: Optional[str],
+        skill_name: Optional[str], details: Optional[dict],
+        source_session: Optional[str],
+    ) -> None:
+        """Append one decision to decisions.jsonl for easy grep.
+
+        The DB row is the source of truth — if this file-side append fails
+        (disk full, permission flip), log and continue so a single log-sink
+        hiccup can't kill the whole run. The two sinks can diverge by one
+        line; acceptable v0.1 trade-off.
+        """
         line = {
             "timestamp": ts,
             "action": action,
-            "skill_id": skill.skill_id,
-            "skill_name": skill.name,
+            "skill_id": skill_id,
+            "skill_name": skill_name,
             "details": details or {},
-            "source_session": None,
+            "source_session": source_session,
         }
         try:
             with self.decisions_log.open("a", encoding="utf-8") as f:
@@ -484,8 +503,6 @@ class Store:
             _logger.error(
                 "failed to append to decisions.jsonl (%s): %s", self.decisions_log, e
             )
-
-    # ── decisions log ─────────────────────────
 
     def log_decision(self, action: str, *, skill: Optional[SkillRecord] = None,
                      details: Optional[dict] = None,
@@ -504,25 +521,10 @@ class Store:
         )
         self.conn.commit()
 
-        # Also write to jsonl for easy grep. The DB row is the source of truth
-        # — if this file-side append fails (disk full, permission flip), log
-        # and continue so a single log-sink hiccup can't kill the whole run.
-        # The two sinks can diverge by one line; acceptable v0.1 trade-off.
-        line = {
-            "timestamp": ts,
-            "action": action,
-            "skill_id": sid,
-            "skill_name": sname,
-            "details": details or {},
-            "source_session": source_session,
-        }
-        try:
-            with self.decisions_log.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(line, ensure_ascii=False) + "\n")
-        except OSError as e:
-            _logger.error(
-                "failed to append to decisions.jsonl (%s): %s", self.decisions_log, e
-            )
+        self._mirror_decision_to_jsonl(
+            ts=ts, action=action, skill_id=sid, skill_name=sname,
+            details=details, source_session=source_session,
+        )
 
 
 # ── Atomic SKILL.md write (§11.3) ───────────────────────────────
