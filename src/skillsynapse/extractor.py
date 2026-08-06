@@ -385,7 +385,7 @@ def extract_from_session(
     # Episode detection: opt-in via config, default on for v0.2.
     # When disabled, the whole session is treated as one episode for
     # backward compatibility with v0.1 behavior.
-    ep_cfg = cfg.raw.get("episode_detection", {}) if hasattr(cfg, "raw") else {}
+    ep_cfg = cfg.raw.get("episode_detection", {})
     if ep_cfg.get("enabled", False):
         episodes = detect_episodes(
             session_id,
