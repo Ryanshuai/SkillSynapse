@@ -15,11 +15,11 @@
 | 现有机制 | 在哪 | 是排序吗 | 是人工闸门吗 |
 |---|---|---|---|
 | extractor 判 `NEW / SKIP` | `extractor.py` | ❌ 二值,单 episode,不跨会话比较 | ❌ 全自动 |
-| `probation` + `metrics` | `metrics.py:277` | ❌ 事后看用量,不是事前排序 | ❌ 全自动 |
-| `pruning:` 配置块 | `config_default.yaml:24` | — | **配置在,代码没实现**(v0.1 deferred) |
-| `pending_changes` 表 | `store.py:140` | ❌ | **空壳**:0 行,无写入方,只有 `count_pending_reviews()` 被 `/skill health` 读 |
-| consolidator `plan → apply` | `consolidator.py:399` | ❌ 管去重合并 | ✅ **唯一真正落地的人确认边界**,但不管重要性 |
-| indexer 渲染 | `indexer.py:4` | ❌ 注释明写 "no runtime ranking, no top-k truncation" | ❌ |
+| `probation` + `metrics` | `metrics.py` `collect_metrics()` 尾部的 probation 翻转 | ❌ 事后看用量,不是事前排序 | ❌ 全自动 |
+| `pruning:` 配置块 | `config_default.yaml` 的 `pruning:` | — | **配置在,代码没实现**(v0.1 deferred) |
+| `pending_changes` 表 | `store.py` 的 `CREATE TABLE pending_changes` | ❌ | **空壳**:0 行,无写入方,只有 `count_pending_reviews()` 被 `/skill health` 读 |
+| consolidator `plan → apply` | `consolidator.py` `plan_consolidation()` / `apply_plan()` | ❌ 管去重合并 | ✅ **唯一真正落地的人确认边界**,但不管重要性 |
+| indexer 渲染 | `indexer.py` 模块 docstring | ❌ 注释明写 "no runtime ranking, no top-k truncation" | ❌ |
 | aggregator「聚类→排序→人确认」 | [03 §3](03-shared-primitives.md#aggregator) | ✅ 设计里有,**代码不存在** | ✅ 设计里有,**代码不存在** |
 
 后果是**只进不出、一律平权**:`realize_candidate` 直接挡4 落盘生效,prune 没实现,
