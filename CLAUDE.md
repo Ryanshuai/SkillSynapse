@@ -9,7 +9,8 @@
 
 原始日志包括：各机的 `~/.claude/projects/`、hub 上聚合的 `~/cc-logs/`、
 extractor 的隔离历史 `~/.claude-skillsynapse/`。**内网拓扑（机器名 ↔ tailnet IP 映射）
-同属机密，只存仓库根目录的 `LOCAL-TOPOLOGY.md`（gitignored）——公开文件里一律用占位符，
+同属机密：每份 checkout 自己在仓库根维护一份 `LOCAL-TOPOLOGY.md`（gitignored，
+所以你 clone 下来不会有——按需自建），公开文件里一律用占位符，
 不写真实 tailnet IP 与主机名清单。**这些文件含完整工具调用与对话原文，
 可能含账号密码、内部代码、公司数据。具体禁止：
 

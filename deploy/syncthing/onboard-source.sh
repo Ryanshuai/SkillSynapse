@@ -7,7 +7,7 @@
 # Usage:
 #   ./onboard-source.sh <HUB_ID> <HUB_TAILNET_IP> <SELF_TAILNET_IP>
 # Example (source -> hub; real IPs in LOCAL-TOPOLOGY.md, not in repo):
-#   ./onboard-source.sh MUG25K7-... 100.x.y.z 100.x.y.w
+#   ./onboard-source.sh <HUB_DEVICE_ID> 100.x.y.z 100.x.y.w
 set -euo pipefail
 cd "$(dirname "$0")"
 source ./lib.sh
