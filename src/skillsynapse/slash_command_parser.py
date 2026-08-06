@@ -10,10 +10,3 @@ from __future__ import annotations
 import re
 
 CMD_RE = re.compile(r"<command-name>/([\w-]+)</command-name>")
-
-
-def find_slash_commands(text: str) -> list[str]:
-    """Return the list of command names referenced in `text`, in order."""
-    if not text:
-        return []
-    return CMD_RE.findall(text)

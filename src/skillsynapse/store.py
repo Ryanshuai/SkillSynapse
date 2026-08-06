@@ -324,10 +324,6 @@ class Store:
         cur = self.conn.execute("SELECT * FROM skills WHERE is_active=1 ORDER BY name")
         return [_row_to_skill(r) for r in cur.fetchall()]
 
-    def list_all_skills(self) -> list[SkillRecord]:
-        cur = self.conn.execute("SELECT * FROM skills ORDER BY name, version")
-        return [_row_to_skill(r) for r in cur.fetchall()]
-
     # Counters for the /skill health view. v0.2 will add more read paths here
     # so commands.py never has to poke conn directly.
 

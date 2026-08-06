@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -53,12 +52,6 @@ def _looks_like_rate_limit(text: str) -> bool:
         return False
     t = text.lower()
     return any(m in t for m in _RATE_LIMIT_MARKERS)
-
-
-@dataclass
-class LLMCallResult:
-    output: str
-    elapsed_seconds: float
 
 
 class LLMProvider:
@@ -196,12 +189,3 @@ class LLMProvider:
             raise LLMError("claude --print produced empty stdout")
 
         return out
-
-    def try_call(self, prompt: str, **kwargs) -> Optional[str]:
-        """Same as `call` but returns None on any non-budget failure."""
-        try:
-            return self.call(prompt, **kwargs)
-        except RateLimitDeferred:
-            raise
-        except LLMError:
-            return None
