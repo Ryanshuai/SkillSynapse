@@ -8,12 +8,16 @@ only parse each .jsonl once per pipeline run.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
 from .models import SessionMeta
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -63,6 +67,7 @@ def parse_jsonl(path: Path) -> list[Event]:
     """
     events: list[Event] = []
     idx = 0
+    dropped = 0
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -71,6 +76,11 @@ def parse_jsonl(path: Path) -> list[Event]:
             try:
                 raw = json.loads(line)
             except json.JSONDecodeError:
+                # A dropped line lowers this session's tool_call count, which can
+                # push it under `min_tool_calls` and turn a real capture into a
+                # silent SKIP. Count them and say so once per file — silence here
+                # always biases the run toward "nothing worth extracting".
+                dropped += 1
                 continue
 
             ts = raw.get("timestamp") or raw.get("ts")
@@ -117,6 +127,9 @@ def parse_jsonl(path: Path) -> list[Event]:
             else:
                 events.append(Event(idx=idx, type=etype, timestamp=ts, raw=raw))
                 idx += 1
+    if dropped:
+        logger.warning("%s: %d unparseable line(s) skipped — event counts for "
+                       "this session are a lower bound", path.name, dropped)
     return events
 
 
@@ -197,7 +210,10 @@ def find_sessions(
                 continue
             try:
                 st = jsonl.stat()
-            except OSError:
+            except OSError as e:
+                # Dropping a session here removes it from the whole run with no
+                # other trace: the found-session count just comes back smaller.
+                logger.warning("skipping unreadable session %s: %s", jsonl, e)
                 continue
             if modified_after is not None:
                 mtime = datetime.fromtimestamp(st.st_mtime)

@@ -10,6 +10,7 @@ patch to the shared logic flows to both activation sources.
 """
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,9 @@ from .models import ExecutionAnalysis, SkillRecord, iso_now, normalize_ts
 from .scanner import Event, find_tool_result, parse_jsonl
 from .slash_command_parser import CMD_RE
 from .store import Store
+
+
+logger = logging.getLogger(__name__)
 
 
 # User-message patterns that look like a correction. §5 Step 2.
@@ -200,6 +204,7 @@ def collect_metrics(
     """
     stats = {
         "sessions_parsed": 0,
+        "sessions_unreadable": 0,
         "tool_use_hits": 0,
         "slash_command_hits": 0,
         "skill_not_found": 0,
@@ -217,7 +222,14 @@ def collect_metrics(
     for path in session_paths:
         try:
             events = parse_jsonl(path)
-        except Exception:
+        except Exception as e:
+            # A session that never parses contributes no selections, so every
+            # skill it would have exercised looks unused — the pruning gates
+            # read that as "nobody wants this". Keep the run going, but never
+            # silently: `sessions_unreadable` makes the shortfall countable.
+            stats["sessions_unreadable"] += 1
+            logger.warning("metrics: cannot parse %s (%s) — skills used in this "
+                           "session go uncounted", path.name, e)
             continue
         stats["sessions_parsed"] += 1
         session_id = path.stem
