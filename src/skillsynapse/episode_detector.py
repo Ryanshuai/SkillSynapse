@@ -229,7 +229,6 @@ def detect_episodes(
 
     split_points.append(len(events))
 
-    # Slice events into episodes.
     episodes: list[Episode] = []
     for i in range(len(split_points) - 1):
         start, end = split_points[i], split_points[i + 1]
