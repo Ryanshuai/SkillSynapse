@@ -1,6 +1,6 @@
 # SkillSynapse default config. Copied to ~/.claude/skillsynapse/config.yaml on
-# first run. See §10 of SkillSynapse-Design-v3.5-final.md for the source of
-# truth; v0.1 only reads a subset, but all keys are present so v0.2 won't need
+# first run. Design docs live in docs/ (start at docs/README.md).
+# v0.1 only reads a subset, but all keys are present so v0.2 won't need
 # a migration.
 
 cron: "0 2 * * *"
