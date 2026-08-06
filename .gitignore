@@ -3,7 +3,7 @@ __pycache__/
 _openspace_ref
 _hermes_ref
 _phase0_dryrun
-docs
+
 SkillSynapse-Design-v3.5-final.md
 
 # Python packaging / editable install artifacts
@@ -26,3 +26,4 @@ decisions.jsonl
 # 内网拓扑(机器名/tailnet IP 映射)只存本地
 LOCAL-TOPOLOGY.md
 
+tests/test_sanitizer.py

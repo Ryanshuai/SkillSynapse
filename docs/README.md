@@ -25,6 +25,7 @@
 ```
 
 一句话分工:**05 喂信号 → 04 长 skill;06 从同一份语料另抽情景/语义记忆;01/02/03 是三者共用的底座。**
+**07 是横挂在这些出口上的闸门**:候选打分排序 → 人 accept 才进生效路径(当前缺失——产物一律平权直接生效)。
 
 ## 文档地图(依赖自上而下,无环)
 
@@ -37,8 +38,10 @@
 | 04 | [skillsynapse-loops](04-skillsynapse-loops.md) | 三环:归纳 / 定向 / 自动化 | 05 / 06 |
 | 05 | [marking-signal](05-marking-signal.md) | 现场盖章的第四信号,喂给三环 | — |
 | 06 | [worklog-and-notes](06-worklog-and-notes.md) | 情景(WorkLog)/ 语义(Notes)记忆,与 SkillSynapse 平级 | — |
+| 07 | [triage-and-ranking](07-triage-and-ranking.md) | **优先级维度**:候选打分排序 + `skill review` 人工分诊闸门 + 库存量上限 | — |
 
-**读法**:先本页 → 底座 01/02/03 → 按兴趣读 04/05/06。每份子文档开头只列它**新增**的东西,共享概念一律指回 03,不重述。
+**读法**:先本页 → 底座 01/02/03 → 按兴趣读 04/05/06 → 07 讲的是它们出口上的闸门。
+每份子文档开头只列它**新增**的东西,共享概念一律指回 03,不重述。
 
 ## 术语表(跨文档共用,定义只此一处)
 
@@ -54,6 +57,8 @@
 | **mark / 标记** | 会话当场对某段打的 ground-truth 标签(learn/pitfall/toil) | 05 |
 | **provenance** | 标记来源:human(权重≈1)/ agent(权重<1) | 05 |
 | **aggregator** | 跨会话模式聚类→排序→人确认→进闭环的共用底座 | 03 |
+| **priority_score** | 候选的重要性分数 `repeat × cost × novelty × mark × recency`,只排序不自动生效 | 07 |
+| **分诊 / triage** | `skill review`:按 priority 排好序给人 accept/reject/defer,accept 才进生效路径 | 07 |
 | **workstream / 台账** | 横跨多会话/多机/多周的一条「工作线」增量记录 | 06 §2.2 |
 
 ## 安全红线(一句话,详见 02)
@@ -73,5 +78,6 @@ session brief 与 skill 文件。完整红线见 [02 §安全](02-transport-and-
 | 三环:归纳环 | ✅ v0.1;定向/自动化环 📐 设计中(04) |
 | 标记信号 | 📐 设计中(05) |
 | WorkLog / Notes | 📐 设计中(06);归档 bug 待修(01 §归档) |
+| 排序 / 人工分诊 / prune | ❌ 未实现(07):候选一律平权直接生效,库只进不出 |
 
 > 讨论稿性质,非最终规格。各文档保留原始的「本轮定调」决定与落地顺序。
