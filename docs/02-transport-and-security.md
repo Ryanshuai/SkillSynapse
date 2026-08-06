@@ -28,9 +28,9 @@ hub       ~/cc-logs/<hostname>/   (receive-only)  →  夜间归档进 cc-archiv
 
 mesh 已建好(2026-07-03 实测)。**具体节点清单(机器名↔tailnet IP↔角色)属拓扑机密,只存本地
 `LOCAL-TOPOLOGY.md`(gitignored)**;结构上是:若干源机 + 一台常在线 Linux 机作**临时 hub** +
-最终 hub `mini`(未到货)。
+一台最终的**常驻 hub**(尚未就位)。
 
-> mini 到货前用常在线的临时 hub 先把 nightly loop 跑起来,mini 上线后把 receive-only 目录迁过去即可。
+> 常驻 hub 就位前用常在线的临时 hub 先把 nightly loop 跑起来,就位后把 receive-only 目录迁过去即可。
 > 注意 `tailscale status` 报过 DNS 健康告警(configured DNS 不可达),可能影响 MagicDNS——所以
 > Syncthing 设备地址一律**硬编码 tailnet IP**,不依赖 MagicDNS。
 
@@ -140,7 +140,7 @@ daemon:沿用 deploy 里的 `systemd --user` 模式(syncthing-cc.service 同款)
 > **已落地为脚本**:`deploy/syncthing/`(`setup-hub.sh` / `onboard-source.sh` / `add-source.sh` +
 > `stconfig.py`)。源机↔临时 hub 链路实测打通(§2.1)。发现入口的 deploy 见 [05 §6](05-marking-signal.md#6-部署与发现)。
 
-**A. 现在就能做(不依赖 mini)**
+**A. 现在就能做(不依赖常驻 hub)**
 
 - [x] 常在线 Linux 机起临时 hub:装 Syncthing,建 `~/cc-logs/` + 权限 700 — 已完成并验证
 - [ ] 各源机装 Syncthing,`~/.claude/projects/` 配 send-only → hub receive-only(按 `<hostname>` 分子目录)
@@ -151,16 +151,16 @@ daemon:沿用 deploy 里的 `systemd --user` 模式(syncthing-cc.service 同款)
 - [ ] 归档 bug 修复(见 [01 §4.1](01-corpus-and-archive.md#41-现有部署的真-bug证据链活不过一个月))——每天都在丢证据,优先
 - [ ] 部署前检查:环境无 `ANTHROPIC_API_KEY`;Console 未开 auto-reload
 
-**B. mini 到货后**
+**B. 常驻 hub 就位后**
 
-- [ ] mini 加入 tailnet;`~/cc-logs/` 或 `/data/cc-logs/` + 权限 700
-- [ ] 各源机 send-only peer 从临时 hub 切到 mini(或过渡期两者都收)
+- [ ] 常驻 hub 加入 tailnet;`~/cc-logs/` 或 `/data/cc-logs/` + 权限 700
+- [ ] 各源机 send-only peer 从临时 hub 切到常驻 hub(或过渡期两者都收)
 - [ ] 定时器:macOS 用 launchd(不用 cron——睡眠/权限不可靠),Linux 用 `systemd --user` timer
 - [ ] 临时 hub 退役或降级为热备
 
 ## 7. 验收标准(30 天军令状)
 
-mini 到货 30 天内跑通三件事,否则说明瓶颈不在硬件:
+常驻 hub 就位 30 天内跑通三件事,否则说明瓶颈不在硬件:
 
 1. Telegram bot 常驻(交互入口)
 2. 夜间多机知识总结任务上线
