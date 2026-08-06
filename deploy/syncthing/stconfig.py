@@ -9,17 +9,17 @@ import xml.etree.ElementTree as ET
 
 # options that must be OFF so Syncthing has no public code path
 ISOLATE_FALSE = {
-    "globalAnnounceEnabled": "false",   # 不上报公网发现服务器
-    "localAnnounceEnabled": "false",    # 关本地广播(tailnet 非 L2)
-    "relaysEnabled": "false",           # 不走公网中继
-    "natEnabled": "false",              # 不 UPnP 打洞
-    "crashReportingEnabled": "false",   # 不上报崩溃
+    "globalAnnounceEnabled": "false",   # never report to public discovery servers
+    "localAnnounceEnabled": "false",    # no local broadcast (a tailnet is not L2)
+    "relaysEnabled": "false",           # never route through public relays
+    "natEnabled": "false",              # no UPnP hole punching
+    "crashReportingEnabled": "false",   # no crash reporting
     "startBrowser": "false",
     "announceLANAddresses": "false",
 }
 ISOLATE_SET = {
-    "autoUpgradeIntervalH": "0",        # 关自动升级(phone-home)
-    "urAccepted": "-1",                 # 拒绝匿名统计上报
+    "autoUpgradeIntervalH": "0",        # no auto-upgrade (it phones home)
+    "urAccepted": "-1",                 # decline anonymous usage reporting
 }
 
 

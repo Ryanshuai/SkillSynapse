@@ -233,7 +233,7 @@ def _import_as_manual(store: Store, skill_md: Path, parsed: SkillMd, name: str) 
 
     tool_deps = _resolve_tool_deps(parsed.frontmatter)
     # Design §5 Step 0: manual skills ship with `critical_tools=[]`. Hermes /
-    # Claude Code frontmatter has no such field, and "没它 skill 就废" can't be
+    # Claude Code frontmatter has no such field, and "the skill is useless without it" cannot be
     # inferred from the body. §5 Step 4.5's aggregate_tool_health() applies the
     # documented fallback `skill.critical_tools or skill.tool_dependencies`, so
     # an empty list still lets manual skills participate in Trigger 2 in v0.2.

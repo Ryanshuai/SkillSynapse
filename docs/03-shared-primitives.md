@@ -1,98 +1,117 @@
-# 03 · 共享原语:挡位 · 产物发布 · 聚合底座
+# 03 · Shared primitives: intensity · publishing · aggregation
 
-> 底座文档。三个被多个读者(04/05/06)复用的机制,定义只此一处。任何文档提到
-> 「挡位」「staging/git 回滚」「跨会话聚合」都以本页为准。
+> Foundation document. Three mechanisms reused by several readers (04/05/06), defined only
+> here. Any document that mentions "intensity", "staging/git rollback" or "cross-session
+> aggregation" defers to this page.
 
-## 1. 挡位:方向 × 强度的离散档 {#挡位}
+## 1. Intensity: discrete steps of direction × strength {#intensity}
 
-一条环 = 一个**方向**;强度 = 它**自主走多远**。强度**不做线性滑杆,离散成几档**——每挡是**质变**
-(改变环做的事的**种类**,不是「同一件事做多点」),像相机的自动/光圈优先/手动挡,不像亮度条。
+A loop is a **direction**; its strength is **how far it acts on its own**. Strength is **not a
+linear slider — it is a few discrete steps**, because each step is a **change in kind** (it
+changes the *kind* of thing the loop does, not "more of the same"). Think of a camera's
+auto / aperture-priority / manual modes, not a brightness bar.
 
-| 挡 | 名 | 这一挡做什么 | 红线 |
+| Level | Name | What this level does | Red line |
 |---|---|---|---|
-| **0** | 关 | 不跑 | — |
-| **1** | 观测 | 只把信号显式化到看板(「我看到你反复在 X」),**零产物** | 不产任何候选 |
-| **2** | 建议 | 产出具体候选(建议的 skill/goal/自动化),**不写任何真实文件** | 不落盘 |
-| **3** | 草稿 | 产物写进 staging `_pending/`,惰性,人 promote 才生效 | 不进生效路径 |
-| **4** | 生效 | 直接写且启用,人**事后**可否决/回滚 | 改真实文件 |
-| ~~5~~ | ~~自驱~~ | ~~主动 headless 演练+启用,不等人~~ | 预留,默认禁用 |
+| **0** | off | doesn't run | — |
+| **1** | observe | only surfaces the signal on a dashboard ("I see you keep doing X"), **produces nothing** | produces no candidates |
+| **2** | suggest | produces concrete candidates (a suggested skill/goal/automation), **writes no real files** | nothing hits disk |
+| **3** | draft | output is written to staging `_pending/`, inert; only takes effect when a human promotes it | never on the live path |
+| **4** | live | written and enabled directly; a human can veto or roll back **afterwards** | modifies real files |
+| ~~5~~ | ~~autonomous~~ | ~~proactively rehearses headless and enables without waiting~~ | reserved, disabled by default |
 
-**每条环/每个目标独立设挡,随信任度上调**。挡位是**运行期配置,不是代码分叉**——同一套代码按 `intensity`
-分支。实现:每条环在 config 里带 `intensity: 0..4`;候选产物落盘前统一过一个 `gate(intensity)` 决定
-「只记录 / 出建议 / 写 staging / 写生效路径」。
+**Every loop and every goal sets its own level, raised as trust grows.** Intensity is
+**runtime configuration, not a code fork** — one codebase branching on `intensity`.
+Implementation: each loop carries `intensity: 0..4` in config, and every candidate passes
+through one `gate(intensity)` before hitting disk, which decides "record only / emit a
+suggestion / write to staging / write to the live path".
 
-**各读者当前落点**(依据见各自文档):
+**Where each reader sits today** (rationale in their own documents):
 
-| 读者/产物 | 当前挡 |
+| Reader / output | Current level |
 |---|---|
-| 三环·归纳 | 挡4 生效(`realize_candidate` 本就直接落盘,最成熟) |
-| 三环·自动化 | 挡3 草稿(生成草稿等人批) |
-| 三环·定向 | 挡2 建议(只偏置不合成) |
-| 标记·`/skillsynapse new` | 挡3 草稿 |
-| WorkLog / 台账 | 挡4(增量私有记录,不改生效环境,风险面小) |
-| Notes | 挡3 起(人扫一眼再入索引),跑稳上挡4 |
+| Three loops · inductive | 4, live (`realize_candidate` already writes directly; the most mature) |
+| Three loops · toil | 3, draft (generates a draft for approval) |
+| Three loops · directed | 2, suggest (biases only, never synthesizes) |
+| Marking · `/skillsynapse new` | 3, draft |
+| WorkLog / ledger | 4 (incremental private records; changes no live environment, small blast radius) |
+| Notes | starts at 3 (a human skims before it enters the index), moves to 4 once stable |
 
-## 2. 产物发布模型:staging + git + symlink {#git-发布模型}
+## 2. Publishing model: staging + git + symlink {#git-publishing}
 
-**定调:synapse 产出的 skill/command 带完整 git 历史。** 一旦有环上到挡4(自动生效),就必须能干净回滚;
-文件型产物的回滚,git 最干净(原子撤销、熟悉工具看 diff、跨机 merge)。挡3 及以下不强制 git——草稿删掉即可——
-**git 是「上挡4」的入场券**。
+**Decided: skills/commands produced by synapse carry full git history.** The moment any loop
+reaches level 4 (auto-live), it must be cleanly rollback-able; for file-shaped output, git is
+the cleanest rollback (atomic undo, familiar tooling for diffs, cross-machine merges). Level 3
+and below don't require git — deleting a draft is enough — so **git is the entry ticket to
+level 4**.
 
-### 2.1 谁需要历史
+### 2.1 What needs history
 
-| 产物 | 回滚手段 |
+| Output | Rollback mechanism |
 |---|---|
-| DB 里的 skill 内容 | `models.py` 已预留 version DAG(`version / parent_skill_ids / content_snapshot / content_diff`)+ decisions.jsonl,app 级即可回滚 |
-| **文件型产物**(SKILL.md / slash-command / 脚本) | **git**——DB 不是源头,文件才是 |
+| Skill content in the DB | `models.py` already reserves a version DAG (`version / parent_skill_ids / content_snapshot / content_diff`) plus decisions.jsonl; app-level rollback suffices |
+| **File-shaped output** (SKILL.md / slash-command / scripts) | **git** — the DB is not the source of truth, the file is |
 
-### 2.2 目录布局:synapse 自有 repo 当源头,`~/.claude` 只是发布视图
+### 2.2 Layout: synapse's own repo is the source, `~/.claude` is just a publishing view
 
-**不 git 整个 `~/.claude`**(4.9G JSONL、共享目录、多写入者)。git 一个 synapse **单写入者**的自有 repo:
+**Do not git the whole of `~/.claude`** (4.9 GB of JSONL, a shared directory, many writers).
+Instead, git a **single-writer** repo that belongs to synapse:
 
 ```
-~/.claude/skills/                 ← manual root(手写 skill,bootstrap 扫这里,永不 git)
+~/.claude/skills/                 ← manual root (hand-written skills; bootstrap scans here, never git)
     my-hand-skill/SKILL.md
-    synapse/  ───── symlink ──────┐  ← 发布视图(挡4 才建此链接)
+    synapse/  ───── symlink ──────┐  ← publishing view (this link is only created at level 4)
                                   │
-~/synapse/skills-repo/  (.git)◄───┘  ← synapse 自有 root = 源头 = git repo(单写入者)
-    _pending/<cand>/              ← 挡3 草稿:已 commit(留历史)但未 symlink,CC 看不到
-    active/<skill>/SKILL.md       ← 挡4 生效:被 symlink 进 ~/.claude/skills/synapse
+~/synapse/skills-repo/  (.git)◄───┘  ← synapse's own root = the source = a git repo (single writer)
+    _pending/<cand>/              ← level-3 drafts: committed (kept in history) but not symlinked, so CC can't see them
+    active/<skill>/SKILL.md       ← level-4 live: symlinked into ~/.claude/skills/synapse
 ```
 
-- **源头**在 synapse 自有 repo;**生效**靠 symlink 把 `active/` 挂进 CC 扫描路径。回滚在 repo 里 `git revert`,
-  symlink 指向内容即时变,无需再 copy。
-- 每晚一次 run = 一个 commit;每次 promote/生效 = 一条带清楚 message 的 commit。
+- **The source** is synapse's own repo; **going live** means a symlink hangs `active/` into CC's
+  scan path. Rollback is `git revert` inside the repo — what the symlink points at changes
+  immediately, with no re-copying.
+- One nightly run = one commit; every promote/go-live = one commit with a clear message.
 
-### 2.3 挡位 ↔ git 动作
+### 2.3 Intensity ↔ git actions
 
-- **挡3 草稿** = 写 `_pending/` 并 commit(草稿也进历史 =「那晚提议过什么、你拒了什么」的审计),**不 symlink**。
-- **挡4 生效** = 挪到 `active/` + 建/更新 symlink。**「发布」这个动作本身就是挡4。**
+- **Level 3, draft** = write to `_pending/` and commit (drafts belong in history too — that's
+  the audit trail of "what was proposed that night, and what you rejected"), **no symlink**.
+- **Level 4, live** = move to `active/` and create/update the symlink. **The act of publishing
+  is itself level 4.**
 
-### 2.4 两条约束
+### 2.4 Two constraints
 
-1. **按 blast radius 给 artifact-kind 封顶挡位**:`settings.json` 的 hook 最危险(自动执行)且文件共享、
-   不好 git → **永远封在挡3(只草稿)**,再信任也不自动生效;skill/command 可以挡4+git。
-2. **bootstrap 别吃自己**:`bootstrap.py` 现扫 `~/.claude/skills/**/SKILL.md` 当 manual 导入;symlink 进去后
-   会把 synapse 自造的 skill 当 manual 再导一遍。故 manual 发现必须**排除 `synapse/` 子树**——`resolve_paths`
-   把 `skills_root` 拆成 `manual_skills_root`(纯扫描根)与 `synapse_skills_root`(默认 `~/synapse/skills-repo`,git 管)。
+1. **Cap each artifact kind's maximum level by blast radius**: `settings.json` hooks are the most
+   dangerous (they execute automatically), the file is shared, and it does not git cleanly →
+   **capped at level 3 (drafts only)** forever, no matter how much trust accumulates. Skills and
+   commands may reach level 4 with git.
+2. **Bootstrap must not eat its own output**: `bootstrap.py` currently scans
+   `~/.claude/skills/**/SKILL.md` and imports them as manual, so once the symlink is in place it
+   would re-import synapse's own skills as manual. Manual discovery must therefore **exclude the
+   `synapse/` subtree** — `resolve_paths` splits `skills_root` into `manual_skills_root` (the
+   scan-only root) and `synapse_skills_root` (default `~/synapse/skills-repo`, git-managed).
 
-> 与[同步矩阵](02-transport-and-security.md#同步通道矩阵)对齐:skill/command 走 **git**(要历史+跨机 merge),
-> 原始 JSONL 走 Syncthing(大、不要历史)。两种数据两种同步。
+> Consistent with the [sync matrix](02-transport-and-security.md#sync-matrix): skills/commands
+> travel over **git** (history + cross-machine merges), raw JSONL travels over Syncthing (large,
+> no history wanted). Two kinds of data, two kinds of sync.
 
-## 3. 跨会话聚合底座(aggregator) {#aggregator}
+## 3. Cross-session aggregation base (aggregator) {#aggregator}
 
-多个读者都要「从跨会话模式里挖东西」,底层是同一套机制,抽成共用 `aggregator`:
+Several readers need to "mine something out of cross-session patterns", and underneath it is the
+same mechanism, factored out as a shared `aggregator`:
 
 ```
-跨会话聚合模式 → 排序 → 人确认 → 进验证闭环
+cluster cross-session patterns → rank → human confirms → enters the verification loop
 ```
 
-各读者只定义「聚什么模式、产什么物」,不各写一遍聚合:
+Each reader only defines "which pattern to cluster, what to produce"; nobody re-implements
+aggregation:
 
-| 复用方 | 聚什么模式 | 产什么 |
+| Reuser | Pattern clustered | Produces |
 |---|---|---|
-| 三环·自动化([04 §4](04-skillsynapse-loops.md)) | 反复出现的机械动作(命令/工具序列 n-gram) | 自动化建议(command/脚本/hook 草稿) |
-| 三环·定向([04 §3](04-skillsynapse-loops.md)) | 反复出现的 coverage_gap | 能力目标建议 |
-| Notes 入库([06 §2](06-worklog-and-notes.md)) | 反复的查阅/事实(N3「挣来的」重复门) | Notes 条目 |
+| Three loops · toil ([04 §4](04-skillsynapse-loops.md)) | recurring mechanical actions (command / tool-sequence n-grams) | automation suggestions (command/script/hook drafts) |
+| Three loops · directed ([04 §3](04-skillsynapse-loops.md)) | recurring coverage_gaps | capability goal suggestions |
+| Notes intake ([06 §2](06-worklog-and-notes.md)) | recurring lookups/facts (the N3 "earned" repetition gate) | Notes entries |
 
-> 落地顺序上建议**自动化环先行**,`aggregator` 从 `toil_miner` 里抽出,再供定向环 / Notes 复用。
+> On delivery order, it is worth letting **the toil loop go first** and extracting `aggregator`
+> out of `toil_miner`, then reusing it for the directed loop and Notes.

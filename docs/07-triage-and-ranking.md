@@ -1,99 +1,120 @@
-# 07 · 分诊与排序:给候选排个序,人只做「重要的」
+# 07 · Triage and ranking: order the candidates, and a human does only the important ones
 
-> 横切文档,作用在 [04 三环](04-skillsynapse-loops.md) 与 [05 标记](05-marking-signal.md) 的**出口**上。
-> 挡位 / staging / aggregator 见 [03](03-shared-primitives.md),本文只讲**优先级**这个新维度。
+> A cross-cutting document, acting on the **exits** of [04, the three loops](04-skillsynapse-loops.md)
+> and [05, marking](05-marking-signal.md). Intensity / staging / aggregator are in
+> [03](03-shared-primitives.md); this page covers only the new dimension: **priority**.
 >
-> **本轮定调**:① 排序落在**产物侧**(抽完再排),不在候选侧——额度充裕,不为省 LLM 在上游设闸,
-> 且人看完整草稿比看原始 episode 元数据判得准;② 归纳环从挡4 降到挡3,`skill review accept` 才生效;
-> ③ **分数全自动算,人只裁决**(accept/reject/defer),绝不让人去打分;④ 排序不是过滤——低分候选留在队列里,
-> 「只做重要的」= 只 **promote** 重要的,不是只 **抽** 重要的;⑤ 没有任何分数高到可以跳过人。
+> **Decided this round**: ① ranking sits on the **output side** (rank after extraction), not the
+> candidate side — quota is plentiful, so don't gate upstream to save LLM calls, and a human judges
+> a complete draft far better than raw episode metadata; ② the inductive loop drops from level 4 to
+> level 3, and only `skill review accept` makes something live; ③ **scores are computed entirely
+> automatically; the human only adjudicates** (accept/reject/defer) and is never asked to score;
+> ④ ranking is not filtering — low-scoring candidates stay in the queue, and "do only the important
+> ones" means only **promoting** the important ones, not only **extracting** them; ⑤ no score is ever
+> high enough to skip the human.
 
-## 1. 现状:只有「产不产」,没有「先做哪个」
+## 1. Today: only "produce or not", never "which one first"
 
-现有全部判断都是**二值**的,而且没有一个是「人在事前挑重点」:
+Every existing decision is **binary**, and not one of them is "a human picking priorities up front":
 
-| 现有机制 | 在哪 | 是排序吗 | 是人工闸门吗 |
+| Existing mechanism | Where | Is it ranking? | Is it a human gate? |
 |---|---|---|---|
-| extractor 判 `NEW / SKIP` | `extractor.py` | ❌ 二值,单 episode,不跨会话比较 | ❌ 全自动 |
-| `probation` + `metrics` | `metrics.py` `collect_metrics()` 尾部的 probation 翻转 | ❌ 事后看用量,不是事前排序 | ❌ 全自动 |
-| `pruning:` 配置块 | `config_default.yaml` 的 `pruning:` | — | **配置在,代码没实现**(v0.1 deferred) |
-| `pending_changes` 表 | `store.py` 的 `CREATE TABLE pending_changes` | ❌ | **空壳**:0 行,无写入方,只有 `count_pending_reviews()` 被 `/skill health` 读 |
-| consolidator `plan → apply` | `consolidator.py` `plan_consolidation()` / `apply_plan()` | ❌ 管去重合并 | ✅ **唯一真正落地的人确认边界**,但不管重要性 |
-| indexer 渲染 | `indexer.py` 模块 docstring | ❌ 注释明写 "no runtime ranking, no top-k truncation" | ❌ |
-| aggregator「聚类→排序→人确认」 | [03 §3](03-shared-primitives.md#aggregator) | ✅ 设计里有,**代码不存在** | ✅ 设计里有,**代码不存在** |
+| extractor's `NEW / SKIP` | `extractor.py` | ❌ binary, per episode, no cross-session comparison | ❌ fully automatic |
+| `probation` + `metrics` | the probation flip at the end of `collect_metrics()` in `metrics.py` | ❌ looks at usage after the fact, not ranking before it | ❌ fully automatic |
+| the `pruning:` config block | `pruning:` in `config_default.yaml` | — | **config exists, code does not** (deferred in v0.1) |
+| the `pending_changes` table | `CREATE TABLE pending_changes` in `store.py` | ❌ | **an empty shell**: 0 rows, no writer; only `count_pending_reviews()` is read, by `/skill health` |
+| consolidator `plan → apply` | `plan_consolidation()` / `apply_plan()` in `consolidator.py` | ❌ handles dedup/merge | ✅ **the only human-confirmation boundary that actually exists**, but it has nothing to do with importance |
+| indexer rendering | the module docstring in `indexer.py` | ❌ the comment says outright "no runtime ranking, no top-k truncation" | ❌ |
+| aggregator "cluster → rank → human confirms" | [03 §3](03-shared-primitives.md#aggregator) | ✅ in the design, **no code** | ✅ in the design, **no code** |
 
-后果是**只进不出、一律平权**:`realize_candidate` 直接挡4 落盘生效,prune 没实现,
-于是每个够格的候选都无差别写进 `~/.claude/skills/` ——**而每个 active skill 都占掉每个 CC 会话的上下文预算**。
-这是真实成本,不是审美问题。本文补的就是缺的那一维:**优先级 + 人工分诊**。
+The consequence is **grows only, never shrinks, everything equally weighted**: `realize_candidate`
+writes straight to level 4, prune was never implemented, so every qualifying candidate is written
+indiscriminately into `~/.claude/skills/` — **and every active skill costs context budget in every
+CC session**. That is a real cost, not an aesthetic complaint. This document adds the missing
+dimension: **priority plus human triage**.
 
-## 2. priority_score:跟 toil_score 同构的乘性打分
+## 2. priority_score: multiplicative, isomorphic to toil_score
 
-沿用 [04 §4.2](04-skillsynapse-loops.md#42-苦力评分) 的乘性风格,五个因子**全部能从 JSONL / 现有表自动算**:
+Following the multiplicative style of [04 §4.2](04-skillsynapse-loops.md#toil-score), five factors,
+**all computable automatically from JSONL and existing tables**:
 
 ```
 priority = repeat × cost × novelty × mark_boost × recency
 ```
 
-| 因子 | 语义(「为什么重要」) | 数据来源 | 大致范围 |
+| Factor | Meaning ("why it matters") | Data source | Rough range |
 |---|---|---|---|
-| `repeat` | **这事你干过几回** —— 最强的重要性代理 | [aggregator](03-shared-primitives.md#aggregator);它落地前用 `session_index` FTS 拿 episode 摘要检索近邻计数 | `1 + log₂(n)` |
-| `cost` | **这回干得多贵** —— 越贵越值得沉淀 | episode 的 tool_call 数 / 时间跨度(`Episode.start_time/end_time`);`metrics._CORRECTION_RE` 纠错命中数 | 0.5 – 2.0 |
-| `novelty` | **池子里有没有覆盖** —— 已有 skill 覆盖到的降权 | 与现有 active skill 的描述相似度(复用 consolidator 的 cluster 判据);命中 `coverage_gaps` 加分 | 0.2 – 1.5 |
-| `mark_boost` | **人/agent 当场盖过章**([05](05-marking-signal.md)) | `SessionMeta.marks` 的 provenance 权重(human 1.0 / agent 0.4) | 1.0 / 1.5 / 3.0 |
-| `recency` | **还在不在做** —— 三个月前干过一次的沉底 | episode 时间 vs now,半衰期 30d | 0.3 – 1.0 |
+| `repeat` | **how many times you've done this** — the strongest proxy for importance | the [aggregator](03-shared-primitives.md#aggregator); until it lands, use the `session_index` FTS to count near neighbours of the episode summary | `1 + log₂(n)` |
+| `cost` | **how expensive this run was** — the more expensive, the more worth distilling | the episode's tool-call count / time span (`Episode.start_time/end_time`); hits of the existing `_CORRECTION_RE` in `metrics.py` | 0.5 – 2.0 |
+| `novelty` | **whether the pool already covers it** — down-weight what existing skills cover | description similarity against active skills (reusing the consolidator's clustering criteria); a bonus for hitting a `coverage_gaps` entry | 0.2 – 1.5 |
+| `mark_boost` | **a human/agent stamped it live** ([05](05-marking-signal.md)) | the provenance weight of `SessionMeta.marks` (human 1.0 / agent 0.4) | 1.0 / 1.5 / 3.0 |
+| `recency` | **whether you're still doing it** — something done once three months ago sinks | episode time vs now, 30-day half-life | 0.3 – 1.0 |
 
-- **存哪**:`pending_changes` 表加两列 `priority_score REAL` + `score_breakdown TEXT`(json 存各因子),
-  复用现成空壳表,不新建表。
-- **可审计**:每次打分把 breakdown 写 `decisions.jsonl`,事后能回答「它凭什么排第一」。
-- **红线**:分数**只排序,不自动 promote**。与 [05 §4 的 `probation_floor_uses`](05-marking-signal.md) 同构的不变量——
-  排序开的是「先看哪个」,不是「免审」。
+- **Where it's stored**: add two columns to `pending_changes` — `priority_score REAL` and
+  `score_breakdown TEXT` (JSON, one entry per factor). Reuse the existing empty shell; no new table.
+- **Auditable**: every scoring run writes the breakdown to `decisions.jsonl`, so "why was this
+  first?" is answerable afterwards.
+- **Red line**: a score **only ranks, it never promotes**. Isomorphic to `probation_floor_uses` in
+  [05 §4](05-marking-signal.md) — ranking buys "which one to look at first", not exemption from review.
 
-## 3. `skill review`:人类分诊台
+## 3. `skill review`: the human triage desk
 
 ```
 $ skill review
  #  SCORE  REPEAT COST NOV  MARK    NAME                          WHY
- 1   8.4   ×4     ×1.8 1.2  ⚑human  deploy-syncthing-over-tailnet 4 次跨机部署,平均 37 步 + 2 次返工
- 2   3.1   ×2     ×1.1 0.9  -       sfm-scale-from-rig-baseline   2 次,单次 21 步
- 3   1.2   ×1     ×0.8 0.4  -       fix-one-off-yaml-typo         1 次,池子里已有近邻
+ 1   8.4   ×4     ×1.8 1.2  ⚑human  deploy-syncthing-over-tailnet 4 cross-machine deploys, avg 37 steps + 2 redos
+ 2   3.1   ×2     ×1.1 0.9  -       sfm-scale-from-rig-baseline   2 times, 21 steps each
+ 3   1.2   ×1     ×0.8 0.4  -       fix-one-off-yaml-typo         once; the pool already has a near neighbour
                                               (17 more below threshold — `skill review --all`)
 
-$ skill review accept 1 2        # 挡3 → 挡4:promote 到 active + 写 SKILL.md + symlink
-$ skill review reject 3 --note "一次性的"
-$ skill review defer 4           # 留在队列,下次继续参与排序
+$ skill review accept 1 2        # level 3 → 4: promote to active + write SKILL.md + symlink
+$ skill review reject 3 --note "one-off"
+$ skill review defer 4           # stays in the queue, keeps participating in ranking
 ```
 
-- `accept` = [03 §2.3](03-shared-primitives.md#git-发布模型) 的 promote 动作,是**唯一**进生效路径的门。
-- `reject` 落 `decisions.jsonl`,并**留作负样本**:被拒的特征先只记录,不做在线学习(避免早期噪声反噬打分)。
-- **先做非交互 CLI,不做 TUI**:可脚本化、可 cron 出「今晚待分诊 N 条」的报表,也便于测试。
+- `accept` is the promote action from [03 §2.3](03-shared-primitives.md#git-publishing) and the
+  **only** door onto the live path.
+- `reject` is recorded in `decisions.jsonl` and **kept as a negative sample**: rejected features are
+  recorded only, with no online learning (so early noise can't feed back into the scoring).
+- **A non-interactive CLI first, no TUI**: scriptable, able to emit a "N candidates awaiting triage
+  tonight" report from cron, and easier to test.
 
-## 4. 上限:排序管顺序,预算管总量
+## 4. Caps: ranking controls order, budget controls total
 
-排序只解决「先看哪个」,不解决「一共多少」。两个硬闸:
+Ranking only answers "which one first", not "how many in total". Two hard gates:
 
 ```yaml
-# config_default.yaml 新增
+# new in config_default.yaml
 review:
-  top_n: 10                  # 每晚只把前 N 个推进分诊队列,其余沉底(仍在库,--all 可见)
+  top_n: 10                  # only the top N enter the triage queue each night; the rest sink (still in the library, visible with --all)
 library:
-  max_active_skills: 40      # 软上限:超了就在 review 里同时提示「该剪谁」
+  max_active_skills: 40      # soft cap: over it, review also suggests what to prune
 ```
 
-超上限时 `skill review` 同屏给出**剪枝建议**(按 `effective_rate` 升序 + 长期零 selection 的 probation 项),
-把 v0.1 deferred 掉的 prune 先用**人工闸门**补上——比再写一套自动 prune 门控稳,且立刻可用。
+Over the cap, `skill review` shows **pruning suggestions** on the same screen (ascending
+`effective_rate` + long-standing probation entries with zero selections), filling in the prune that
+v0.1 deferred with a **human gate** — steadier than writing another automatic prune gate, and usable
+immediately.
 
-## 5. 存量分诊(第 0 步,不依赖上面任何代码)
+## 5. Triaging the existing library (step 0, depends on none of the above)
 
-现在 `~/.claude/skills/` 已有 23 个 skill(14 captured 全在 probation、从未被剪),它们**无差别挂在每个会话上下文里**。
-先跑一次离线补分:对现有 active skill 按 §2 同一公式打分(`repeat` 用 `source_sessions` 数量代理,
-无 episode 历史的 `cost` 取 1),`skill review --existing` 让人一次性过一遍,砍掉不该常驻的。
+`~/.claude/skills/` already holds 23 skills (14 captured, all still in probation, never pruned), and
+they are **loaded indiscriminately into every session's context**. Start with one offline scoring
+pass: score existing active skills with the same formula from §2 (using `source_sessions` count as a
+proxy for `repeat`, and `cost` = 1 where there is no episode history), then let a human go through
+them once with `skill review --existing` and cut what should not be resident.
 
-## 6. 落地顺序
+## 6. Delivery order
 
-1. **`priority.py` 打分 + `pending_changes` 加两列** —— 纯计算,不改任何现有行为,可单测。
-2. **`skill review` list/accept/reject/defer** —— 队列先空跑,人已经能用。
-3. **归纳环降挡3**(`loops.inductive.intensity: 3`):`realize_candidate` 改落 `_pending/`,新候选默认进队列。
-4. **存量分诊**(§5)。
-5. **`repeat` 接真 aggregator**([03 §3](03-shared-primitives.md#aggregator))—— 在那之前用 FTS 代理。
+1. **`priority.py` scoring + two columns on `pending_changes`** — pure computation, changes no
+   existing behaviour, unit-testable.
+2. **`skill review` list/accept/reject/defer** — the queue runs empty at first, but a human can
+   already use it.
+3. **Drop the inductive loop to level 3** (`loops.inductive.intensity: 3`): `realize_candidate`
+   writes to `_pending/` instead, and new candidates enter the queue by default.
+4. **Triage the existing library** (§5).
+5. **Wire `repeat` to the real aggregator** ([03 §3](03-shared-primitives.md#aggregator)) — using the
+   FTS proxy until then.
 
-第 1、2 步不改现有行为,第 3 步才切开关——可灰度、可回退。
+Steps 1 and 2 change no existing behaviour; step 3 is where the switch flips — so it can be rolled
+out gradually and rolled back.
