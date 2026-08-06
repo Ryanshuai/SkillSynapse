@@ -285,7 +285,7 @@ class Store:
         cur = self.conn.execute("SELECT 1 FROM categories WHERE slug=?", (slug,))
         return cur.fetchone() is not None
 
-    def insert_category(self, slug: str, description: str, manual_only: bool = False) -> None:
+    def insert_category(self, slug: str, description: str, manual_only: bool) -> None:
         now = iso_now()
         self.conn.execute(
             "INSERT OR IGNORE INTO categories (slug, description, manual_only, "
