@@ -79,5 +79,22 @@ session brief 与 skill 文件。完整红线见 [02 §安全](02-transport-and-
 | 标记信号 | 📐 设计中(05) |
 | WorkLog / Notes | 📐 设计中(06);归档 bug 待修(01 §归档) |
 | 排序 / 人工分诊 / prune | ❌ 未实现(07):候选一律平权直接生效,库只进不出 |
+| 测试与可验证性 | ⚠️ 见下 |
+
+### 测试与可验证性(2026-08-06 重构轮实测)
+
+**`tests/` 整个目录不在 git 里** —— `.gitignore` 挡掉了 `tests/test_sanitizer.py`,
+`git ls-files tests/` 是空的。三个后果,第二个最隐蔽:
+
+1. 唯一那份测试不进版本控制,换台机器就没有;
+2. **任何只看 `git ls-files` 的静态分析工具眼里,这个仓库一个测试都没有** ——
+   于是 `sanitizer.scrub` 少算一个调用方,而「零调用方」正是自动化重构的删除依据;
+3. 16 个模块里只有 1 个能被一条命令独立验证,其余全部**没有验证下限**。
+
+**跑 pipeline 的验证探针必须全沙箱。** `main.run_pipeline(dry_run=True)` 并**不**只读:
+Step 0 的 `bootstrap.discover_manual_skills` 和 Step 2 的 `collect_metrics` 在 dry_run
+判断之前就已经写 DB。要拿覆盖面像样的运行时证据,得用 `load_config(<临时 yaml>)` 把
+`skills_root` / `data_dir` / `projects_root` 全指到临时目录,再喂**手工构造的合成 JSONL**
+(安全红线:真实 session 日志不进任何测试路径)。
 
 > 讨论稿性质,非最终规格。各文档保留原始的「本轮定调」决定与落地顺序。
