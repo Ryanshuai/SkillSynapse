@@ -27,3 +27,6 @@ decisions.jsonl
 LOCAL-TOPOLOGY.md
 
 tests/test_sanitizer.py
+
+# agent-refactor 工作目录
+.agent-refactor/
