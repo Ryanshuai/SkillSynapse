@@ -50,7 +50,7 @@
 | **语料 / corpus** | 各机 `~/.claude/projects/**/*.jsonl`,明文落盘的会话事件流 | 01 |
 | **episode** | `episode_detector` 从一个会话里切出的一段连贯工作 | 01 |
 | **抽取 pass** | 每个 episode 过一次 LLM,同时产出 skill 候选 / 工作事件 / 笔记(三出口分流) | 06 §2 |
-| **hub** | 汇聚 + 归档 + 蒸馏 + 分发的中心机(mini 到货前 = 临时 hub) | 02 |
+| **hub** | 汇聚 + 归档 + 蒸馏 + 分发的中心机(常驻 hub 就位前 = 临时 hub) | 02 |
 | **mesh** | Tailscale WireGuard 内网;安全边界 = mesh 边界 | 02 |
 | **挡位 / intensity** | 0关/1观测/2建议/3草稿/4生效,一条环自主走多远的离散档 | 03 |
 | **staging `_pending/`** | 挡3 草稿落盘处,人 promote 才生效 | 03 |
@@ -79,17 +79,17 @@ session brief 与 skill 文件。完整红线见 [02 §安全](02-transport-and-
 | 标记信号 | 📐 设计中(05) |
 | WorkLog / Notes | 📐 设计中(06);归档 bug 待修(01 §归档) |
 | 排序 / 人工分诊 / prune | ❌ 未实现(07):候选一律平权直接生效,库只进不出 |
-| 测试与可验证性 | ⚠️ 见下 |
+| 测试与可验证性 | ⚠️ 16 个模块只有 1 个有测试,见下 |
 
 ### 测试与可验证性(2026-08-06 重构轮实测)
 
-**`tests/` 整个目录不在 git 里** —— `.gitignore` 挡掉了 `tests/test_sanitizer.py`,
-`git ls-files tests/` 是空的。三个后果,第二个最隐蔽:
+**16 个模块里只有 1 个(`sanitizer.py`)能被一条命令独立验证**,其余全部没有验证下限 ——
+改它们时「跑现有测试」这个前提不成立,只能退回沙箱手工比对前后输出。
 
-1. 唯一那份测试不进版本控制,换台机器就没有;
-2. **任何只看 `git ls-files` 的静态分析工具眼里,这个仓库一个测试都没有** ——
-   于是 `sanitizer.scrub` 少算一个调用方,而「零调用方」正是自动化重构的删除依据;
-3. 16 个模块里只有 1 个能被一条命令独立验证,其余全部**没有验证下限**。
+曾经还叠了一层更隐蔽的:`tests/test_sanitizer.py` 被 `.gitignore` 挡着(已修)。
+除了「换台机器就没有测试」之外,真正的坑是**任何只看 `git ls-files` 的静态分析工具
+眼里这个仓库一个测试都没有** —— 于是 `sanitizer.scrub` 少算一个调用方,
+而「零调用方」正是自动化重构的删除依据。**gitignore 掉的不只是文件,还是证据。**
 
 **跑 pipeline 的验证探针必须全沙箱。** `main.run_pipeline(dry_run=True)` 并**不**只读:
 Step 0 的 `bootstrap.discover_manual_skills` 和 Step 2 的 `collect_metrics` 在 dry_run
