@@ -69,11 +69,31 @@ def main():
         a = ET.SubElement(d, "address"); a.text = addr
         p = ET.SubElement(d, "paused"); p.text = "false"
 
-    existing_folders = {f.get("id") for f in root.findall("folder")}
+    existing_folders = {f.get("id"): f for f in root.findall("folder")}
+    paths_in_use = {f.get("path"): f.get("id") for f in root.findall("folder")}
     for spec in args.add_folder:
         fid, path, ftype, devids = spec.split("|", 3)
-        if fid in existing_folders:
+        want = [d for d in devids.split(",") if d]
+        old = existing_folders.get(fid)
+        if old is not None:
+            # A second hub for an already-onboarded source lands here. Skipping
+            # would leave the new hub unshared while every script still printed
+            # READY — so union the devices in instead of returning silently.
+            if old.get("path") != path:
+                sys.exit(f"ERROR: folder {fid} already exists at {old.get('path')}, "
+                         f"refusing to repoint it at {path}")
+            have = {d.get("id") for d in old.findall("device")}
+            added = [d for d in want if d not in have]
+            for dv in added:
+                ET.SubElement(old, "device").set("id", dv)
+            print(f"OK  folder {fid} exists; "
+                  + (f"shared with {len(added)} new device(s)" if added else "no change"))
             continue
+        if path in paths_in_use:
+            # Syncthing refuses two folders on one path; catch it here where the
+            # message can say which folder already owns it.
+            sys.exit(f"ERROR: {path} is already shared as folder "
+                     f"'{paths_in_use[path]}' — reuse that folder id, do not add {fid}")
         f = ET.SubElement(root, "folder")
         f.set("id", fid); f.set("label", fid); f.set("path", path)
         f.set("type", ftype); f.set("rescanIntervalS", "3600")
