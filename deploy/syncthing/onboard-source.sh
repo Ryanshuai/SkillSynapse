@@ -13,7 +13,11 @@ cd "$(dirname "$0")"
 source ./lib.sh
 
 HUB_ID="${1:?HUB_ID}"; HUB_IP="${2:?HUB_TAILNET_IP}"; SELF_IP="${3:?SELF_TAILNET_IP}"
-HOST="$(hostname -s)"
+# CC_HOST, not `hostname -s`: this name is the first segment of every evidence
+# pointer (<hostname>/<project-dir>/<session>.jsonl, docs/01 §4.2) and the hub's
+# folder id. A machine's OS hostname can be renamed, and one already onboarded
+# under another name must keep it or its whole pointer namespace orphans.
+HOST="${CC_HOST:-$(hostname -s)}"
 SRC_DIR="${CC_PROJECTS_DIR:-$HOME/.claude/projects}"
 FID="cc-${HOST}"
 
