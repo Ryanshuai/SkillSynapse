@@ -125,7 +125,8 @@ EOF
     echo "LaunchAgent loaded: $plist"
   else
     echo "WARN: launchctl bootstrap failed — no GUI session for uid $(id -u)?"
-    echo "      A LaunchAgent only runs while someone is logged in. For an"
-    echo "      always-on headless hub, enable auto-login or use a LaunchDaemon."
+    echo "      A LaunchAgent only runs while someone is logged in, so nothing"
+    echo "      is running now. For an always-on headless hub, run ONCE:"
+    echo "          sudo $(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/macos-launchdaemon.sh $USER"
   fi
 }
