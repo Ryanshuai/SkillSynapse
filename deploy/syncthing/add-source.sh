@@ -19,7 +19,9 @@ python3 "$STCONFIG" --config "$STH_HOME/config.xml" \
   --add-folder "${FID}|${HUB_BASE}/${HOST}|receiveonly|$(self_device_id),${SRC_ID}"
 
 # hot-reload if the daemon is running, else it picks it up on next start
-APIKEY="$(grep -oP '(?<=<apikey>)[^<]+' "$STH_HOME/config.xml" || true)"
+# sed, not `grep -oP`: this script runs ON THE HUB, and the hub is macOS —
+# BSD grep has no -P. Same reason install_user_service() branches on st_os.
+APIKEY="$(sed -n 's/.*<apikey>\([^<]*\)<\/apikey>.*/\1/p' "$STH_HOME/config.xml" | head -1)"
 curl -fsS -X POST -H "X-API-Key: $APIKEY" http://127.0.0.1:8384/rest/system/restart >/dev/null 2>&1 \
   && echo "hub reloaded" || echo "start/restart hub daemon to apply"
 echo "registered source '$HOST' -> folder $FID at $HUB_BASE/$HOST"
