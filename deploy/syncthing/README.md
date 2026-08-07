@@ -44,10 +44,16 @@ Each source lands at `~/cc-logs/<hostname>/` on the hub. Scripts are idempotent.
 
 Validation runs fine detached (`nohup`), but to survive reboot the scripts
 install a `systemd --user` unit (`syncthing-cc.service`). A **headless always-on
-hub** additionally needs, once, the only sudo step in the whole setup:
+hub** additionally needs, once, the only privileged step in the whole setup:
 
 ```
+# Linux hub:
 sudo loginctl enable-linger $USER
+
+# macOS hub: a LaunchAgent only runs while someone is logged in at the console,
+# and an always-on mini usually has nobody logged in. Install a LaunchDaemon
+# instead (system domain, no session needed, still runs as the owning user):
+sudo ./macos-launchdaemon.sh $USER
 ```
 
 ## Reducing volume (optional)
