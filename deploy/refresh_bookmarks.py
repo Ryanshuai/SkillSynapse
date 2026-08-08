@@ -22,7 +22,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from project_icons import IconCache  # noqa: E402
+from project_icons import IconCache, kick_homepage  # noqa: E402
+from skillsynapse_status import write_status  # noqa: E402
 
 HOST = "https://mac-mini.tail1a4a56.ts.net"
 CONFIG = Path.home() / "code/homepage/config"
@@ -193,20 +194,22 @@ def main() -> int:
             ]
         lines.append("")
 
-    # 先落缓存再写 YAML。这一轮里 agent 挑过的图标已经付过钱了,后面任何一步失败
-    # 都不该让下一轮重新付一次。
-    cache.save()
-
     if MANUAL.exists():
         manual = MANUAL.read_text(encoding="utf-8")
         # Strip a leading document marker so the merge stays one document.
         manual = re.sub(r"\A---\s*\n", "", manual)
         manual = fill_manual_icons(manual, cache)
-        cache.save()
         lines += ["# ── 以下来自 bookmarks.manual.yaml ──", manual.rstrip(), ""]
 
     OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"wrote {OUT} — {total} project(s)")
+
+    # SkillSynapse 没有 Web UI,状态只能由这一侧主动摆出来给首页那张卡片读。
+    # 搭在这个 5 分钟的心跳上,而不是再起一个 daemon —— 同样的节奏,同一把锁。
+    write_status()
+
+    # YAML 先落地再踢服务:重启后它读到的就该是这一份,而不是上一轮的。
+    cache.finish(also=["/skillsynapse.json"])
     return 0
 
 
