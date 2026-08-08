@@ -1,0 +1,31 @@
+---
+title: 车队
+description: 一份文件，一个实例，任何地方打开都是它
+
+# 纯黑:theme dark + neutral 是 Homepage 里最接近无色的一档,
+# slate/zinc 都带一点蓝或紫,在 OLED 上会看出来。
+theme: dark
+color: neutral
+headerStyle: clean
+hideVersion: true
+
+# 项目一行四个,服务一行三个 —— 项目是主角,来这一页九成是为了进某个工程。
+layout:
+  车队:
+    style: row
+    columns: 3
+  家庭栈:
+    style: row
+    columns: 3
+    initiallyCollapsed: true
+
+# 项目列表是自动扫出来的,组一多默认折叠会让人以为东西丢了。
+disableCollapse: false
+fullWidth: false
+useEqualHeights: true
+
+quicklaunch:
+  searchDescriptions: true
+  hideInternetSearch: true
+  showSearchSuggestions: false
+  hideVisitURL: false
