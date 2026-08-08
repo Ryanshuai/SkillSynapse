@@ -1,0 +1,87 @@
+/* 书签图标放大一倍高。
+ *
+ * 组件里写死的是 `w-11`(44px 色块)套 `w-5 h-5`(20px 图),而 ResolvedIcon 又在
+ * <img> 上挂了 32px 的**行内**样式,被 `max-width:100%` 压回 20px。所以三层都得动:
+ * 色块加宽、外框放到 40px、图本身撑满外框。
+ *
+ * 走 custom.css 而不是改 item.jsx —— 后者要 fork + `pnpm build`,而且每次上游更新
+ * 都要重新打一遍补丁。行内样式只能靠 !important 压过去,这是它唯一需要的地方。
+ */
+.bookmark-icon {
+  width: 4rem;
+}
+
+.bookmark-icon > div {
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+}
+
+.bookmark-icon img {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* 截图类图标是方的,圆角能让它和 emoji 砖看起来是一套 */
+.bookmark-icon img {
+  border-radius: 0.375rem;
+}
+
+/* 服务卡的图标放大到 48px(组件里写死 32px 的行内样式,只能靠 !important 压)。
+ *
+ * 两种子元素都要管:mdi/si 走的是 mask,渲染成 <div>;图片走 next/image,渲染成 <img>。
+ * 只写其中一个,另一半会静悄悄地不动 —— 而它看起来像"这个图标本来就小"。
+ */
+.service-icon {
+  width: 4rem;
+}
+
+.service-icon > div,
+.service-icon > img {
+  width: 3rem !important;
+  height: 3rem !important;
+}
+
+/* 底部那一行问答条。固定在视口底部,内容区留出等高的空隙,免得最后一张卡被压住。 */
+.askbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 50;
+  padding: 0.5rem 1rem calc(0.5rem + env(safe-area-inset-bottom));
+  background: rgba(20, 20, 20, 0.92);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.askbar-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  color: #e5e5e5;
+  font-size: 0.875rem;
+  outline: none;
+}
+.askbar-input:focus { border-color: rgba(255, 255, 255, 0.25); }
+.askbar-input:disabled { opacity: 0.5; }
+
+/* 回答可能很长。给一个上限并且可滚动 —— 一条会把整页顶上去的"一行对话框",
+   下一次就不会有人想用它。 */
+.askbar-out {
+  margin-top: 0.5rem;
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+}
+.askbar-out[data-kind="err"] { color: #f5a3a3; }
+.askbar-out[data-kind="wait"] { color: #8a8a8a; }
+
+/* 页面本体给底部让出空间,否则最后一行书签永远被那条带子盖着。 */
+body { padding-bottom: 4.5rem; }
+
+/* 页脚那个刷新按钮去掉:它和底部的问答条重叠了。
+ * 它做的事(revalidate + reload)按 F5 就有,而配置本来就是每次请求现读的。 */
+#revalidate { display: none !important; }

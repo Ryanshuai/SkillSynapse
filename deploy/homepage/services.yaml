@@ -1,0 +1,82 @@
+---
+# 车队入口。这一页存在的理由不是"链接不好记",是**只存一份**:
+# 三台机器打开的是 mac-mini 上的同一个实例,没有"这边和那边不一样"这回事,
+# 因此也没有同步、没有冲突、没有"哪份是最新的"这个问题要你去记。
+#
+# API key 一律走 {{HOMEPAGE_VAR_*}},从 secrets.env(600) 注入 —— 这份 YAML 是要
+# 进 git 的,而 claude-config 的规矩是"任何凭据一律占位符"。
+
+- 车队:
+    - Claude Code:
+        icon: si-anthropic
+        href: https://mac-mini.tail1a4a56.ts.net/
+        description: VS Code + Claude Code 扩展 · 跑在 mac-mini,任何地方打开都是同一个工作区
+        siteMonitor: http://127.0.0.1:8080
+
+    - Syncthing:
+        icon: si-syncthing
+        href: https://mac-mini.tail1a4a56.ts.net/st/
+        description: skill 三方双向 · 对话语料三路上行
+        widget:
+          type: syncthing
+          url: http://127.0.0.1:8384
+          key: "{{HOMEPAGE_VAR_SYNCTHING_KEY}}"
+
+    - 终端:
+        icon: si-gnometerminal
+        href: https://mac-mini.tail1a4a56.ts.net/term/
+        description: mac-mini 的裸 shell(tmux)· 扩展搞不定时用
+        siteMonitor: http://127.0.0.1:7681
+
+    - SkillSynapse:
+        icon: mdi-head-lightbulb-outline
+        href: https://mac-mini.tail1a4a56.ts.net/?folder=/Users/shuaiyan/code/SkillSynapse
+        description: 从三台机器的对话日志里生长新技能 · 手动触发,故意没有定时器(费 token)
+        widget:
+          type: customapi
+          url: http://127.0.0.1:3000/skillsynapse.json
+          refreshInterval: 60000
+          mappings:
+            - field: skills
+              label: 技能
+            - field: sessions
+              label: 会话语料
+            - field: hosts
+              label: 上行机器
+            - field: newest
+              label: 最新技能
+
+    - 技能合并:
+        icon: mdi-source-merge
+        href: https://mac-mini.tail1a4a56.ts.net/?folder=/Users/shuaiyan/code/claude-config
+        description: 三台改同一个技能撞出的冲突 · 每 5 分钟扫,整点交给 agent 融
+        widget:
+          type: customapi
+          url: http://127.0.0.1:3000/skillsynapse.json
+          refreshInterval: 60000
+          mappings:
+            - field: conflicts
+              label: 待人工
+            - field: merged
+              label: 已融合
+            - field: last
+              label: 上次扫描
+
+- 家庭栈:
+    - Homebridge:
+        icon: homebridge.png
+        href: http://100.111.54.114:8581/
+        description: HomeKit 桥接
+        siteMonitor: http://127.0.0.1:8581
+
+    - Zigbee2MQTT:
+        icon: zigbee2mqtt.png
+        href: http://100.111.54.114:8099/
+        description: Zigbee 设备
+        siteMonitor: http://127.0.0.1:8099
+
+    - HAClaw:
+        icon: si-telegram
+        href: http://100.111.54.114:8000/
+        description: 家庭栈主服务 + Telegram bot
+        siteMonitor: http://127.0.0.1:8000
