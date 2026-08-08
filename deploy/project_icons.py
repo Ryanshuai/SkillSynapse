@@ -158,20 +158,30 @@ def _shape_ok(raw: bytes, path: Path) -> bool:
     return _RATIO_MIN <= d[0] / d[1] <= _RATIO_MAX
 
 
-def _score(path: Path, project: Path, readme_refs: set[str]) -> int:
+def _score(path: Path, project: Path, readme_refs: set[str]) -> tuple[int, int]:
+    """返回 (理由, 总分)。
+
+    **两个数是两回事,不能合成一个。** 总分决定"哪张最好",理由决定"到底该不该用图"。
+
+    一个只有总分的排名永远排得出第一名 —— 哪怕候选全是 `docs/` 底下十几张随机截图,
+    分数一模一样,第一名由 `os.walk` 的顺序决定。那张图缩到 48px 是一团糊,而它占掉了
+    本该属于 emoji 的位置。**"有图"不是用图的理由,"这张图是门面"才是。**
+    """
     rel = path.relative_to(project).as_posix().lower()
-    s = 0
+    reason = 0
     for keys, pts in _NAME_SCORES:
         if any(k in path.stem.lower() for k in keys):
-            s = max(s, pts)
-    for part in path.relative_to(project).parts[:-1]:
-        s += _DIR_BONUS.get(part.lower(), 0)
+            reason = max(reason, pts)
     # README 引过的图,是项目自己挑过的封面 —— 压过任何文件名启发式。
     if rel in readme_refs or path.name.lower() in readme_refs:
-        s += 12
+        reason += 12
+
+    total = reason
+    for part in path.relative_to(project).parts[:-1]:
+        total += _DIR_BONUS.get(part.lower(), 0)
     # 越浅越可能是门面图,越深越可能是某个子模块的插图。
-    s -= len(path.relative_to(project).parts) - 1
-    return s
+    total -= len(path.relative_to(project).parts) - 1
+    return reason, total
 
 
 def _walk_images(project: Path, limit: int = 400) -> list[Path]:
@@ -204,7 +214,10 @@ def repo_image(project: Path) -> Optional[tuple[str, str]]:
             continue
         if not 0 < size <= _MAX_BYTES:
             continue
-        ranked.append((_score(p, project, ref_set), p))
+        reason, total = _score(p, project, ref_set)
+        if reason <= 0:                # 说不出为什么是它,就不是它
+            continue
+        ranked.append((total, p))
     ranked.sort(key=lambda t: -t[0])
 
     # 排第一的不合格就往下走,而不是直接放弃 —— 最典型的情况正是"最高分的是横幅"。
@@ -278,12 +291,26 @@ _JSON_RE = re.compile(r"\{.*?\}", re.S)
 
 def agent_pick(project: Path, timeout: int = 90) -> Optional[dict]:
     """问 agent 要一个 emoji + 色相。失败返回 None,由调用方降级。"""
+    return _ask(_project_brief(project), fallback_name=project.name, timeout=timeout)
+
+
+def agent_pick_label(name: str, description: str, timeout: int = 90) -> Optional[dict]:
+    """给不在本机上的项目挑图标 —— 只有名字和一句话,没有代码可读。
+
+    信息比扫库少得多,但**图标不需要理解一个项目,只需要认出它**,而名字加一句话
+    通常足够挑出一个不会认错的 emoji。
+    """
+    brief = f"项目名: {name}\n一句话说明: {description}\n(这个项目不在本机,没有代码可读)"
+    return _ask(brief, fallback_name=name, timeout=timeout)
+
+
+def _ask(brief: str, fallback_name: str, timeout: int) -> Optional[dict]:
     env = dict(os.environ)
     if "CLAUDE_CODE_OAUTH_TOKEN" not in env:
         tok = _oauth_token()
         if tok:
             env["CLAUDE_CODE_OAUTH_TOKEN"] = tok
-    prompt = _PROMPT.format(brief=_project_brief(project))
+    prompt = _PROMPT.format(brief=brief)
     try:
         r = subprocess.run(
             ["claude", "--print", "--model", "claude-haiku-4-5-20251001", prompt],
@@ -310,7 +337,7 @@ def agent_pick(project: Path, timeout: int = 90) -> Optional[dict]:
     if not emoji:
         return None
     hue = d.get("hue")
-    hue = int(hue) % 360 if isinstance(hue, (int, float)) else _hue_pair(project.name)[0]
+    hue = int(hue) % 360 if isinstance(hue, (int, float)) else _hue_pair(fallback_name)[0]
     return {"emoji": emoji, "hue": hue, "why": str(d.get("why", ""))[:24]}
 
 
@@ -420,6 +447,34 @@ class IconCache:
             self.dropped.add(key)
             self.data.pop(key, None)
         self.dirty = True
+
+    def icon_for_label(self, name: str, description: str) -> Optional[str]:
+        """给手写条目挑图标。键用 `manual:<名字>` —— 它没有本机路径可当键。
+
+        额度用尽时返回 None 而不是缩写砖:手写条目本来就带 `abbr`,Homepage 会自己显示
+        它。塞一块砖进去只是把"还没挑"伪装成"挑好了",下一轮就不会再来补。
+        """
+        key = f"manual:{name}"
+        hit = self.data.get(key)
+        if hit and (hit.get("kind") == "agent"
+                    or hit.get("attempts", 0) >= MAX_ATTEMPTS):
+            return hit.get("uri")
+        if self.spent >= MAX_NEW_PER_RUN:
+            return None
+        self.spent += 1
+        pick = agent_pick_label(name, description)
+        if pick:
+            rec = {"uri": tile(name, pick["emoji"], pick["hue"]), "kind": "agent",
+                   "source": f'{pick["emoji"]} {pick["why"]}'.strip()}
+            print(f'  {name}(手写): {pick["emoji"]}  {pick["why"]}')
+        else:
+            rec = {"uri": tile(name), "kind": "fallback", "source": "缩写渐变",
+                   "attempts": (hit or {}).get("attempts", 0) + 1}
+        self.data[key] = rec
+        self.dropped.discard(key)
+        self.dirty = True
+        self.save()
+        return rec["uri"]
 
     def icon_for(self, project: Path) -> str:
         key = str(project.resolve())

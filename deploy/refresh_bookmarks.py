@@ -91,6 +91,50 @@ def yaml_escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
+_ENTRY_RE = re.compile(r"^(\s+)- (?!abbr:|href:|icon:|description:)(\S.*?):\s*$")
+_ABBR_RE = re.compile(r"^(\s+)- abbr:\s*(.*)$")
+_DESC_RE = re.compile(r"^\s+description:\s*\"?(.*?)\"?\s*$")
+
+
+def fill_manual_icons(manual: str, cache) -> str:
+    """给 bookmarks.manual.yaml 里没写 icon 的条目补一个。
+
+    手写文件本身不动 —— 它是**你**写的,补出来的图标是派生物,派生物不该回写进源头。
+    补在合并出去的那一份里,源文件永远只有你打的那几行。
+    """
+    src = manual.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(src):
+        line = src[i]
+        out.append(line)
+        m = _ENTRY_RE.match(line)
+        if not m:
+            i += 1
+            continue
+        # 一个条目从这里到下一个同级(或更浅)的 `- 名字:` 为止
+        j = i + 1
+        while j < len(src) and not (_ENTRY_RE.match(src[j])
+                                    and len(_ENTRY_RE.match(src[j]).group(1))
+                                    <= len(m.group(1))):
+            j += 1
+        block = src[i + 1:j]
+        if any("icon:" in b for b in block):
+            out += block
+            i = j
+            continue
+        desc = next((_DESC_RE.match(b).group(1) for b in block if _DESC_RE.match(b)), "")
+        uri = cache.icon_for_label(m.group(2).strip(), desc)
+        for b in block:
+            out.append(b)
+            am = _ABBR_RE.match(b)
+            if am and uri:
+                # 和 abbr 同一个映射块,缩进对齐到 `abbr` 这个键本身(短横之后)
+                out.append(" " * (len(am.group(1)) + 2) + f"icon: {uri}")
+        i = j
+    return "\n".join(out)
+
+
 LOCK = Path.home() / ".claude/skillsynapse/bookmarks.lock"
 
 
@@ -157,6 +201,8 @@ def main() -> int:
         manual = MANUAL.read_text(encoding="utf-8")
         # Strip a leading document marker so the merge stays one document.
         manual = re.sub(r"\A---\s*\n", "", manual)
+        manual = fill_manual_icons(manual, cache)
+        cache.save()
         lines += ["# ── 以下来自 bookmarks.manual.yaml ──", manual.rstrip(), ""]
 
     OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
