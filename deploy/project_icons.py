@@ -328,6 +328,9 @@ def _score(path: Path, project: Path, readme_refs: set[str]) -> tuple[int, int]:
     一个只有总分的排名永远排得出第一名 —— 哪怕候选全是 `docs/` 底下十几张随机截图,
     分数一模一样,第一名由 `os.walk` 的顺序决定。那张图缩到 48px 是一团糊,而它占掉了
     本该属于 emoji 的位置。**"有图"不是用图的理由,"这张图是门面"才是。**
+
+    十张就够。再多不会让选择变好 —— 一个仓库里够格当门面的图本来就只有那么几张,
+    列到第二十张时看的已经是噪声,而每一张都要 agent 花注意力去读。
     """
     rel = path.relative_to(project).as_posix().lower()
     reason = 0
@@ -346,15 +349,18 @@ def _score(path: Path, project: Path, readme_refs: set[str]) -> tuple[int, int]:
     return reason, total
 
 
-def _walk_images(project: Path, per_dir: int = 4, limit: int = 3000) -> list[Path]:
-    """每个目录最多取几张,而不是"总共取前 N 张"。
+def _walk_images(project: Path, per_dir: int = 2, limit: int = 200) -> list[Path]:
+    """每个目录最多取两张,总共不超过两百张。
 
-    ⚠ 上一版是"扫够 400 张就停"。在 `pubg_derecoil` 那种仓库里(21630 张 PNG,几乎全是
+    ⚠ 第一版是"扫够 400 张就停"。在 `pubg_derecoil` 那种仓库里(21630 张 PNG,几乎全是
     `data/templates/` 下的武器模板),那 400 张全部落在头几个模板目录里 —— **等于按
     `os.walk` 的顺序取样**,而 docs/ 和 README 引的图一张都进不来。
 
-    按目录配额之后,一个有两万张同类图的目录只贡献 4 张,深度换成了广度。上限仍然在,
-    但它现在是防失控的护栏,不是取样规则。
+    按目录配额之后,一个有两万张同类图的目录只贡献两张:**深度换成了广度**,而这正是
+    选代表图需要的 —— 同一个目录里第 3 张和第 300 张长得几乎一样,多看一张换不来
+    任何新信息,只是多读一次盘。
+
+    两百是护栏,不是取样规则:配额生效之后,正常仓库根本到不了它。
     """
     out: list[Path] = []
     for root, dirs, files in os.walk(project):
@@ -371,7 +377,18 @@ def _walk_images(project: Path, per_dir: int = 4, limit: int = 3000) -> list[Pat
     return out
 
 
-def candidates(project: Path, top: int = 24) -> list[dict]:
+def _head(path: Path, n: int = 32_768) -> bytes:
+    """只读文件头。量宽高用不着整个文件 —— PNG/GIF/WEBP 的尺寸在前 32 字节里,
+    JPEG 也几乎总在前几 KB 的 SOF 段。**读全文件是这一层唯一真正花时间的地方。**
+    """
+    try:
+        with path.open("rb") as f:
+            return f.read(n)
+    except OSError:
+        return b""
+
+
+def candidates(project: Path, top: int = 10) -> list[dict]:
     """能当图标用的图,按启发式排序后取前若干张,交给 agent 去选。
 
     **启发式只负责淘汰,不负责挑选。** 尺寸不合适、形状不对、根本不是图 —— 这些规则
@@ -394,14 +411,11 @@ def candidates(project: Path, top: int = 24) -> list[dict]:
             continue
         if not 0 < size <= _MAX_BYTES:
             continue
-        try:
-            raw = p.read_bytes()
-        except OSError:
-            continue
-        if not _shape_ok(raw, p):
+        head = _head(p)
+        if not head or not _shape_ok(head, p):
             continue
         _, total = _score(p, project, ref_set)
-        ranked.append((total, p, (_dims(raw) or (0, 0), size)))
+        ranked.append((total, p, (_dims(head) or (0, 0), size)))
     ranked.sort(key=lambda t: -t[0])
 
     out = []
