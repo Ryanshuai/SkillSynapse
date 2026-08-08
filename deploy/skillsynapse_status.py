@@ -93,10 +93,46 @@ def _hosts() -> int:
                if p.is_dir() and not p.name.startswith("."))
 
 
+def _sessions() -> int:
+    """可供生长的原料:三台机器上行的会话数。"""
+    if not CC_LOGS.is_dir():
+        return 0
+    return sum(1 for _ in CC_LOGS.rglob("*.jsonl"))
+
+
+def _newest_skill() -> str:
+    """最近一个技能是什么时候长出来的。
+
+    走 `resolve()` 之后的真实目录 —— `~/.claude/skills` 本身是个软链,对它取 mtime
+    得到的是**建软链**那一刻,和技能有没有更新毫无关系。
+    """
+    newest = 0.0
+    for root in SKILLS_ROOTS:
+        root = root.resolve()
+        if not root.is_dir():
+            continue
+        for p in root.iterdir():
+            if p.is_dir() and not p.name.startswith("."):
+                newest = max(newest, p.stat().st_mtime)
+    return datetime.fromtimestamp(newest).strftime("%m-%d") if newest else "—"
+
+
 def build() -> dict:
+    """两张卡片共用一份 JSON,各自映射自己那几个字段。
+
+    **生长和合并是两件事**,不是一件事的两个角度:
+      · 生长 —— 从对话日志里蒸馏新技能。费 token,所以**没有定时器**,由人决定什么时候跑。
+      · 合并 —— 三台机器改同一个技能撞出的冲突。每 5 分钟扫,整点交给 agent 融。
+    把它们写在同一张卡上,等于宣称跑其中一个就等于跑了另一个。
+    """
     merged, last = _merge_stats()
-    return {"skills": _skill_count(), "conflicts": _conflicts_now(),
-            "merged": merged, "hosts": _hosts(), "last": last or "—"}
+    return {
+        # 生长
+        "skills": _skill_count(), "sessions": _sessions(), "hosts": _hosts(),
+        "newest": _newest_skill(),
+        # 合并
+        "conflicts": _conflicts_now(), "merged": merged, "last": last or "—",
+    }
 
 
 def write_status() -> bool:

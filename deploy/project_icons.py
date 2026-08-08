@@ -68,10 +68,16 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import struct
 import subprocess
 from pathlib import Path
 from typing import Optional
+
+try:
+    import icon_inbox
+except ImportError:                    # 发送端只装了这个模块,没有收件箱那一半
+    icon_inbox = None                  # type: ignore
 
 CACHE_PATH = Path.home() / ".claude/skillsynapse/icons.json"
 SECRETS = Path.home() / ".config/haclaw/secrets.env"
@@ -340,15 +346,28 @@ def _score(path: Path, project: Path, readme_refs: set[str]) -> tuple[int, int]:
     return reason, total
 
 
-def _walk_images(project: Path, limit: int = 400) -> list[Path]:
+def _walk_images(project: Path, per_dir: int = 4, limit: int = 3000) -> list[Path]:
+    """每个目录最多取几张,而不是"总共取前 N 张"。
+
+    ⚠ 上一版是"扫够 400 张就停"。在 `pubg_derecoil` 那种仓库里(21630 张 PNG,几乎全是
+    `data/templates/` 下的武器模板),那 400 张全部落在头几个模板目录里 —— **等于按
+    `os.walk` 的顺序取样**,而 docs/ 和 README 引的图一张都进不来。
+
+    按目录配额之后,一个有两万张同类图的目录只贡献 4 张,深度换成了广度。上限仍然在,
+    但它现在是防失控的护栏,不是取样规则。
+    """
     out: list[Path] = []
     for root, dirs, files in os.walk(project):
         dirs[:] = [d for d in dirs if d not in _SKIP_DIRS and not d.startswith(".")]
-        for f in files:
+        taken = 0
+        for f in sorted(files):
             if Path(f).suffix.lower() in _IMG_EXT:
                 out.append(Path(root) / f)
-                if len(out) >= limit:
-                    return out
+                taken += 1
+                if taken >= per_dir:
+                    break
+        if len(out) >= limit:
+            break
     return out
 
 
@@ -533,12 +552,14 @@ def _ask(brief: str, fallback_name: str, timeout: int,
             env["CLAUDE_CODE_OAUTH_TOKEN"] = tok
     prompt = _PROMPT.format(brief=brief)
 
+    # Windows 上它是 `claude.cmd`,`subprocess` 不加 shell 找不到裸名字。
+    exe = shutil.which("claude") or "claude"
     if look_in is None:
-        cmd = ["claude", "--print", "--model", _MODEL_TEXT]
+        cmd = [exe, "--print", "--model", _MODEL_TEXT]
     else:
         # 看图这一步换更强的模型:判断"这一块缩到 64px 还认得出吗"是视觉判断,
         # 而它每个项目只做一次。给 Read 是**唯一**让它真的看见图的办法。
-        cmd = ["claude", "--print", "--model", _MODEL_VISION,
+        cmd = [exe, "--print", "--model", _MODEL_VISION,
                "--allowedTools", "Read", "--add-dir", str(look_in)]
     try:
         # prompt 走 stdin,不走 argv:`--add-dir` 是变长参数,跟在它后面的位置参数会被
@@ -800,6 +821,24 @@ class IconCache:
         它。塞一块砖进去只是把"还没挑"伪装成"挑好了",下一轮就不会再来补。
         """
         key = f"manual:{name}"
+
+        # 来件优先,而且**永远压过缓存里的 emoji**:持有项目的那台机器看得见代码和图,
+        # 本机看不见。它送来的判断在任何时候都比本机瞎猜的那个 emoji 更有依据。
+        shipped = icon_inbox.find(name) if icon_inbox else None
+        if shipped:
+            rec = {"kind": "image", "src": Path(shipped["image"]).name,
+                   "project": str(Path(shipped["image"]).parent),
+                   "crop": shipped.get("crop"),
+                   "source": f'{shipped["host"]} 送来 {shipped.get("src", "")}'}
+            if self.data.get(key) != rec:
+                print(f'  {name}(来件): {shipped["host"]} · {shipped.get("src")}'
+                      f'  {shipped.get("why", "")}')
+                self.data[key] = rec
+                self.dropped.discard(key)
+                self.dirty = True
+                self.save()
+            return self._render(rec, name, key)
+
         hit = self.data.get(key)
         if hit and (hit.get("kind") == "agent"
                     or hit.get("attempts", 0) >= MAX_ATTEMPTS):
