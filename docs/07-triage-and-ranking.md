@@ -73,7 +73,10 @@ $ skill review defer 4           # stays in the queue, keeps participating in ra
 ```
 
 - `accept` is the promote action from [03 §2.3](03-shared-primitives.md#git-publishing) and the
-  **only** door onto the live path.
+  **only** door onto the live path. It decides *whether a skill goes live at all*; what it may then
+  do to the local machine is a separate question, answered by the tier in
+  [08](08-capability-and-permission.md#three-axes) — an accepted skill still **starts at the
+  quarantine tier**. Priority is not trust.
 - `reject` is recorded in `decisions.jsonl` and **kept as a negative sample**: rejected features are
   recorded only, with no online learning (so early noise can't feed back into the scoring).
 - **A non-interactive CLI first, no TUI**: scriptable, able to emit a "N candidates awaiting triage

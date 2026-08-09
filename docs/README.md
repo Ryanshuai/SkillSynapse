@@ -31,6 +31,8 @@ In one line: **05 feeds signal → 04 grows skills; 06 distills episodic/semanti
 the same corpus; 01/02/03 are the foundation all three share.**
 **07 is the gate hanging across all of their exits**: score and rank candidates, and only a
 human `accept` puts one on the live path (missing today — everything ships with equal weight).
+**08 picks up where 07 lets go**: once a skill is live, what may it actually do to the local
+machine — least privilege at skill granularity, enforced at OS level.
 
 ## Document map (dependencies top-down, no cycles)
 
@@ -44,10 +46,11 @@ human `accept` puts one on the live path (missing today — everything ships wit
 | 05 | [marking-signal](05-marking-signal.md) | the fourth signal, stamped live, feeding the three loops | — |
 | 06 | [worklog-and-notes](06-worklog-and-notes.md) | episodic (WorkLog) / semantic (Notes) memory, peers of SkillSynapse | — |
 | 07 | [triage-and-ranking](07-triage-and-ranking.md) | **the priority dimension**: candidate scoring + the `skill review` human gate + a library size cap | — |
+| 08 | [capability-and-permission](08-capability-and-permission.md) | **least privilege per skill**: manifest × tier, srt enforcement, the audit projection report (agent runtime safety; orthogonal to 02) | 04 (its output runs under these constraints) |
 
 **How to read**: this page → the foundation 01/02/03 → 04/05/06 as they interest you → 07,
-which is about the gate on their exits. Each sub-document opens with only what it **adds**;
-shared concepts always point back to 03 rather than restating them.
+which is about the gate on their exits → 08 for agent runtime safety. Each sub-document opens with
+only what it **adds**; shared concepts always point back to 03 rather than restating them.
 
 ## Glossary (shared across documents; defined only here)
 
@@ -65,6 +68,9 @@ shared concepts always point back to 03 rather than restating them.
 | **aggregator** | the shared base for cross-session pattern clustering → ranking → human confirmation → verification loop | 03 |
 | **priority_score** | a candidate's importance, `repeat × cost × novelty × mark × recency`; ranks only, never auto-promotes | 07 |
 | **triage** | `skill review`: candidates ordered by priority for a human to accept/reject/defer; only accept reaches the live path | 07 |
+| **manifest** | the capability needs a skill declares in SKILL.md (paths / tools / mesh machines / secrets / actions needing approval); versioned with the skill, carried through the DAG | 08 |
+| **tier** | the runtime trust level the system grants a skill by reputation (quarantine → privileged); the grant is `manifest ∩ tier` | 08 |
+| **srt** | the OS-level sandbox runtime that pins down the `manifest ∩ tier` boundary (deny by default, allowlist only) | 08 |
 | **workstream / ledger** | one incrementally-maintained "line of work" spanning many sessions, machines and weeks | 06 §2.2 |
 
 ## Security red line (one line; details in 02)
@@ -74,6 +80,10 @@ is a session brief or skill file that has passed `sanitizer.scrub()`. The full l
 [02 §security](02-transport-and-security.md#security-isolation) and the repo-root `CLAUDE.md`.
 Topology (machine name ↔ tailnet IP) lives only in the gitignored `LOCAL-TOPOLOGY.md`; public
 files use placeholders.
+
+> Security has a second, orthogonal axis: **what an agent may do to the local system**, i.e. least
+> privilege at skill granularity — see [08](08-capability-and-permission.md). 02 governs the
+> outbound data boundary; 08 governs the inbound constraint on agent actions.
 
 ## Delivery status (high level; details in each document)
 
@@ -87,6 +97,7 @@ files use placeholders.
 | Marking signal | 📐 in design (05) |
 | WorkLog / Notes | 📐 in design (06); archive bug outstanding (01 §archive) |
 | Ranking / human triage / prune | ❌ not implemented (07): candidates ship with equal weight, the library only grows |
+| Least privilege per skill (manifest / tier / srt) | 📐 in design (08) |
 | Testing and verifiability | ⚠️ only 1 of 16 modules has tests — see below |
 
 ### Testing and verifiability (measured during the 2026-08-06 refactor round)

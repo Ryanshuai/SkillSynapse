@@ -69,6 +69,11 @@ mesh is unguarded.
 > isolated history `~/.claude-skillsynapse/`) are never committed, never sent out, never
 > uploaded to a public service; the only outbound path is a session brief or skill file that has
 > passed `sanitizer.scrub()`; the topology list lives only in `LOCAL-TOPOLOGY.md`.
+>
+> **The orthogonal axis**: this page covers only the **outbound data boundary** (what may leave the
+> mesh). What an agent may do to the local system while it runs — least privilege at skill
+> granularity: manifest × tier × srt — is the other axis, in
+> [08](08-capability-and-permission.md).
 
 ### 2.1 Syncthing isolation config (hard constraint)
 
