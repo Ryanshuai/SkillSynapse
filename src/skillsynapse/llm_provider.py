@@ -54,6 +54,39 @@ def _looks_like_rate_limit(text: str) -> bool:
     return any(m in t for m in _RATE_LIMIT_MARKERS)
 
 
+# Where a headless hub keeps its subscription token. `claude --print` accepts
+# CLAUDE_CODE_OAUTH_TOKEN in place of an interactive login, which is the only
+# thing that works on a box nobody logs into.
+_OAUTH_TOKEN_FILES = (
+    "~/.config/haclaw/secrets.env",
+)
+
+
+def _oauth_token_from_file() -> Optional[str]:
+    """Read CLAUDE_CODE_OAUTH_TOKEN out of a KEY=value env file.
+
+    Deliberately parses out the single key instead of sourcing the file: these
+    env files are shared secret stores (Gmail app passwords, Telegram bot
+    tokens), and none of the rest has any business being in the environment of
+    an LLM subprocess.
+    """
+    for raw in _OAUTH_TOKEN_FILES:
+        path = Path(raw).expanduser()
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line.startswith("CLAUDE_CODE_OAUTH_TOKEN"):
+                continue
+            _, _, value = line.partition("=")
+            value = value.strip().strip("\'\"")
+            if value:
+                return value
+    return None
+
+
 class LLMProvider:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -141,6 +174,15 @@ class LLMProvider:
         env = os.environ.copy()
         env.pop("CLAUDECODE", None)
 
+        # A headless hub has no `.credentials.json` — nobody ever ran /login there.
+        # Fall back to the fleet's stored subscription token so the nightly run and
+        # the merge heartbeat can authenticate without an interactive session.
+        # An inherited token always wins: it is what the caller deliberately chose.
+        if not env.get("CLAUDE_CODE_OAUTH_TOKEN"):
+            tok = _oauth_token_from_file()
+            if tok:
+                env["CLAUDE_CODE_OAUTH_TOKEN"] = tok
+
         # Keep the child's session history out of the user's real Claude Code
         # history (see _ensure_isolated_config_dir). When opted out, the child
         # inherits whatever CLAUDE_CONFIG_DIR the parent had (default ~/.claude).
@@ -181,7 +223,13 @@ class LLMProvider:
             )
 
         if proc.returncode != 0:
-            tail = stderr[-500:]
+            # The CLI does not consistently put failures on stderr: an
+            # unauthenticated run prints "Not logged in \u00b7 Please run /login" to
+            # STDOUT and exits 1, leaving stderr empty. Reporting only stderr turns
+            # that into `claude --print exit 1: ` — an error with a colon and
+            # nothing after it, which is how a missing login on the hub survived
+            # two full heartbeats looking like an unexplained subprocess failure.
+            tail = (stderr[-500:] or stdout[-500:]).strip() or "(no output on either stream)"
             raise LLMError(f"claude --print exit {proc.returncode}: {tail}")
 
         out = stdout.strip()

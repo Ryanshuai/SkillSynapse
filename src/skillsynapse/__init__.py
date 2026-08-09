@@ -1,4 +1,4 @@
-"""SkillSynapse — nightly cron that grows Claude Code skills from session logs.
+"""SkillSynapse — grows Claude Code skills from session logs, on demand.
 
 Design docs live in `docs/` — start at `docs/README.md`.
 This package implements the v0.1 minimum loop:

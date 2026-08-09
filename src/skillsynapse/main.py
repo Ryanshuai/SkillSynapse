@@ -1,4 +1,7 @@
-"""Nightly cron entry. Chains the v0.1 pipeline:
+"""Manual entry point. Chains the v0.1 pipeline:
+
+  Run it when you have a reason to. There is deliberately NO scheduler — see
+  "Why there is no cron" below.
 
   Step 0    discover manual skills              (bootstrap.py)
   Step 1    scan recent sessions                (scanner.py)

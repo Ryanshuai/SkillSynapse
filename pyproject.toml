@@ -1,7 +1,7 @@
 [project]
 name = "skillsynapse"
 version = "0.1.0"
-description = "Nightly cron that grows Claude Code skills from session logs"
+description = "Grows Claude Code skills from session logs, run manually"
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0",
@@ -10,6 +10,8 @@ dependencies = [
 [project.scripts]
 skillsynapse = "skillsynapse.main:main"
 skill = "skillsynapse.commands:main"
+skillmerge = "skillsynapse.merge_conflicts:main"
+skillsuggest = "skillsynapse.suggest:main"
 
 [build-system]
 requires = ["setuptools>=68"]

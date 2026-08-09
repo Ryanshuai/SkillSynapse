@@ -1,10 +1,11 @@
 # SkillSynapse
 
-A nightly cron job that distills reusable skills out of Claude Code session logs.
+Distills reusable skills out of Claude Code session logs. **You run it**; there is
+no scheduler, on purpose.
 
 Part of what you do with Claude Code every day is a **reusable procedure** — but it only
 exists as a chat transcript sitting in `~/.claude/projects/**/*.jsonl`, so next time you
-explain it all over again. SkillSynapse scans those logs every night and turns the parts
+explain it all over again. SkillSynapse scans those logs when you ask it to and turns the parts
 worth keeping into `~/.claude/skills/<name>/SKILL.md`, so Claude Code already knows them
 next time.
 
@@ -38,13 +39,17 @@ Read it end to end before touching anything. Test JSONL is **always hand-built s
 | **Inductive loop** (session → episode slicing → LLM extraction → SKILL.md → rendered index) | ✅ working, v0.1 |
 | Scrubbing via `scrub()` (both the session brief and the skill written to disk) | ✅ wired in |
 | Headless history isolation (its own `CLAUDE_CONFIG_DIR`, never pollutes your real CC history) | ✅ wired in |
-| Multi-machine aggregation (Syncthing over Tailscale, send-only → hub) | ✅ verified in practice |
-| Skill dedup / merge (`consolidator.py`) | ⚠️ code exists, **has no entry point**, has never run |
+| Multi-machine aggregation of **session logs** (Syncthing over Tailscale, send-only → hub) | ✅ verified in practice |
+| Multi-machine sync of **skills** (`skills-canon`, bidirectional, 3 machines) | ✅ live 2026-08-08 |
+| Agent merge of divergent skills (`merge_conflicts.py`, 5-min scan + hourly arbitration) | ✅ live 2026-08-08 |
+| Skill dedup / merge (`consolidator.py` — clusters *differently-named* near-duplicates; not the same problem as `merge_conflicts.py`, which merges *one* skill's two versions) | ⚠️ code exists, **has no entry point**, has never run |
 | Directed loop / toil loop / marking signal / triage & ranking / prune | 📐 design docs only, no implementation |
 
 **Biggest gap right now:** every skill produced goes live with equal weight, and the library
 only grows — there is no priority ordering and no human gate. Design in
-[docs/07](docs/07-triage-and-ranking.md).
+[docs/07](docs/07-triage-and-ranking.md). That gap now has teeth it did not have in v0.1: `merge_conflicts.py` rewrites skills unattended and syncthing puts the result on all three
+machines within seconds. `merge_gate()` is the only thing standing between a bad merge and
+every machine, and it checks shape (size, frontmatter, skill name), not correctness.
 
 ## Running it
 

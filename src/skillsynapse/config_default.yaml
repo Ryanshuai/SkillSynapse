@@ -3,7 +3,10 @@
 # v0.1 only reads a subset, but all keys are present so v0.2 won't need
 # a migration.
 
-cron: "0 2 * * *"
+# 没有定时,这是有意的:每次跑都烧 token,而"哪些 skill 值得存在"是人的判断。
+# 手动跑:  pixi run python -m skillsynapse.main --hours-back N
+# (这个键没有任何代码读它;留着一个 cron 表达式只会让人以为存在一个调度器。)
+cron: null
 
 extraction:
   min_tool_calls: 15
