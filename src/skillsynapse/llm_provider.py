@@ -170,14 +170,15 @@ class LLMProvider:
 
         # Claude Code sets CLAUDECODE=1; nested `claude --print` refuses to
         # launch with that flag. Strip it from the child env so SkillSynapse
-        # can run as a nightly cron triggered from within a Claude Code session.
+        # can run when manually triggered from within a Claude Code session.
         env = os.environ.copy()
         env.pop("CLAUDECODE", None)
 
         # A headless hub has no `.credentials.json` — nobody ever ran /login there.
-        # Fall back to the fleet's stored subscription token so the nightly run and
-        # the merge heartbeat can authenticate without an interactive session.
-        # An inherited token always wins: it is what the caller deliberately chose.
+        # Fall back to the fleet's stored subscription token so a manually
+        # triggered run and the merge heartbeat can authenticate without an
+        # interactive session. An inherited token always wins: it is what the
+        # caller deliberately chose.
         if not env.get("CLAUDE_CODE_OAUTH_TOKEN"):
             tok = _oauth_token_from_file()
             if tok:

@@ -79,7 +79,7 @@ Data directory: `~/.claude/skillsynapse/` (`db.sqlite` / `logs/` / `config.yaml`
 
 ```
 src/skillsynapse/
-  main.py              nightly pipeline orchestration (the cron entry point)
+  main.py              pipeline orchestration (manual entry point, no scheduler)
   scanner.py           walks .jsonl, parses it into an event stream
   episode_detector.py  splits one session into stretches of coherent work
   extractor.py         one LLM pass per episode: NEW / UPDATE / PITFALL / SKIP

@@ -1,6 +1,7 @@
 # SkillSynapse design docs
 
-Distilling reusable knowledge nightly from a multi-machine corpus of Claude Code sessions.
+Distilling reusable knowledge on demand from a multi-machine corpus of Claude Code sessions
+(manually triggered — there is deliberately no scheduler).
 This directory is a layered set of design documents; **this page is the only entrance** —
 big picture, glossary, reading order and delivery status all live here, and each sub-document
 covers exactly one thing.

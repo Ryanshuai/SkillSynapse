@@ -1,7 +1,7 @@
 """Manual entry point. Chains the v0.1 pipeline:
 
-  Run it when you have a reason to. There is deliberately NO scheduler — see
-  "Why there is no cron" below.
+  Run it when you have a reason to — there is deliberately no scheduler.
+  Wire up your own cron/launchd job externally if you want it recurring.
 
   Step 0    discover manual skills              (bootstrap.py)
   Step 1    scan recent sessions                (scanner.py)
@@ -14,7 +14,7 @@
   Step 10   render hierarchy index              (indexer.py)
 
 Usage:
-  python -m skillsynapse.main                       # cron: yesterday → now
+  python -m skillsynapse.main                       # default: yesterday → now
   python -m skillsynapse.main --hours-back 48       # wider window
   python -m skillsynapse.main --dry-run             # no LLM, no disk writes,
                                                       still prints what would happen
@@ -176,7 +176,7 @@ def run_pipeline(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="skillsynapse", description="SkillSynapse nightly pipeline (v0.1).")
+    p = argparse.ArgumentParser(prog="skillsynapse", description="SkillSynapse pipeline (v0.1), run manually.")
     p.add_argument("--hours-back", type=int, default=24,
                    help="Only consider sessions modified in the last N hours (default 24).")
     p.add_argument("--dry-run", action="store_true",
